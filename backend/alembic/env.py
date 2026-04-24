@@ -17,7 +17,7 @@ if config.config_file_name is not None:
 
 from sqlmodel import SQLModel
 # import models so they are registered on metadata
-from app.models.db_models import CityReference, Carrier, CarrierRoute
+from app.providers.db import CityReference, Carrier, CarrierRoute
 from app.config.settings import settings
 
 # set sqlalchemy.url from settings when available

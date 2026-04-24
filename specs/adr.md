@@ -498,7 +498,7 @@ overload the process under load. A per-endpoint rate limit protects both the bac
 without requiring infrastructure changes at the MVP stage.
 
 ### Decision
-All public-facing endpoints (`GET /api/cities`, `POST /api/search`) must enforce a rate limit of
+All public-facing endpoints (`GET /api/cities`, `GET /api/search`) must enforce a rate limit of
 **100 requests per minute** per client IP address.
 
 `GET /health` is exempt (used by health checks and monitoring).
@@ -608,6 +608,41 @@ All three variables are defined in `backend/app/config/settings.py`.
 - `cachetools` is added to backend runtime dependencies in `pyproject.toml`.
 - Tests must cover the cache hit path (no provider call) and the cache miss path (provider called and result stored).
 - Changing TTL values does not require a new ADR; changing the cache strategy (e.g., moving to Redis) does.
+
+---
+
+## ADR-021 — Metrics: Prometheus instrumentation and exposure
+
+**Status:** Accepted  
+**Date:** 2026-04-24
+
+### Context
+The backend must observe provider behavior (Google Maps), DB queries, and other runtime signals to detect regressions, trigger alerts, and support operational diagnostics. During early development a JSON endpoint and in-memory counters were used for convenience, but they do not integrate with standard monitoring tooling.
+
+### Decision
+Adopt **Prometheus** as the primary metrics system for the GenLogs backend. The application will use the `prometheus_client` library to register counters and other metrics in a private CollectorRegistry and expose them via an HTTP endpoint. When the library is not available (local development or constrained environments) the application will fall back to an in-memory counter store and return JSON for the `/api/metrics` route.
+
+### Consequences
+- `prometheus_client` is added to runtime dependencies used in CI and staging. The code tolerates its absence for local/dev runs.
+- A minimal set of counters is instrumented immediately: `maps_google_attempts`, `maps_google_failures`, `maps_google_circuit_open`, `db_get_carriers`. Additional metrics (histograms for provider latency, gauge for queue length) can be added iteratively.
+- The metrics endpoint returns Prometheus exposition (`text/plain; version=0.0.4`) when `prometheus_client` is present; otherwise it returns a JSON mapping of known counters. A private CollectorRegistry is used to avoid global registry conflicts during tests and reuse.
+- Tests can assert on the in-memory counters or call the Prometheus exposition when available. The CI job installs `prometheus-client` so integration environments expose Prometheus metrics.
+- Operational implication: add Prometheus scrape job for the service in staging; configure alerting rules for high `maps_google_failures` or high error rates on search endpoints.
+
+### Implementation
+- Add a small metrics abstraction (`backend/app/metrics.py`) that exposes `inc(name)`, `get(name)`, `reset()` and `prometheus_metrics_latest()`.
+- Instrument providers and DB provider calls to increment relevant counters.
+- Expose `/api/metrics` via FastAPI which returns Prometheus exposition when available and JSON fallback otherwise.
+- Ensure the CollectorRegistry is private to the application module to avoid collisions in unit tests.
+- Add unit tests that exercise both the in-memory fallback and the Prometheus path by monkeypatching or installing `prometheus_client` in CI.
+
+### Alternatives considered
+- Keep the JSON-only approach (rejected — incompatible with standard monitoring platforms and alerts).  
+- Use a Pushgateway pattern (rejected for MVP complexity and operation overhead).
+
+### State and next steps
+- Implementation completed in codebase: metrics abstraction, instrumentation and metrics endpoint with fallback.  
+- Next operational steps: add Prometheus scrape configuration in staging; create simple alert rules for provider failures and high latency; consider exposing metrics at `/metrics` root if required by environment.
 
 ---
 

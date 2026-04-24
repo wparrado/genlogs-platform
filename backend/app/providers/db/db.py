@@ -1,0 +1,124 @@
+"""Database engine and helpers for GenLogs backend.
+
+This module contains the concrete database implementation and helpers and is
+intended to live inside the `app.providers.db` provider package. The rest of
+the application should import these symbols from the provider namespace.
+
+It also exposes a small provider API for DB-backed operations used by the
+services layer so that business logic does not depend on raw SQLModel/engine
+usage.
+"""
+
+from sqlmodel import SQLModel, create_engine, Session, select
+from app.config.settings import settings
+from typing import Dict, List
+
+# Import local models
+from .models import CityReference, Carrier, CarrierRoute
+
+# Engine using configured DATABASE URL
+engine = create_engine(settings.genlogs_database_url, echo=False)
+
+
+def get_session():
+    """Yield a database session for use with dependency injection.
+
+    Example usage in FastAPI dependencies::
+        def get_db():
+            with Session(engine) as session:
+                yield session
+    """
+    with Session(engine) as session:
+        yield session
+
+
+def init_db() -> None:
+    """Create database tables from SQLModel metadata.
+
+    Intended for use in development and tests. Production deployments should use
+    Alembic migrations instead.
+    """
+    SQLModel.metadata.create_all(engine)
+
+
+# Provider API: data access helpers used by services
+def get_city_by_place_id(place_id: str):
+    """Return CityReference for a given place_id or None."""
+    with Session(engine) as session:
+        return session.exec(select(CityReference).where(CityReference.place_id == place_id)).first()
+
+
+def suggest_cities(prefix: str, limit: int = 10) -> List[Dict]:
+    """Return up to ``limit`` cities whose normalized_label starts with prefix.
+
+    Case-insensitive; returns serializable objects for the API layer.
+    """
+    p = (prefix or "").lower()
+    items: List[Dict] = []
+
+    with Session(engine) as session:
+        col = CityReference.__table__.c.normalized_label
+        stmt = (
+            select(CityReference)
+            .where(col.like(p + "%"))
+            .order_by(col)
+            .limit(limit)
+        )
+        rows = session.exec(stmt).all()
+
+        for r in rows:
+            items.append(
+                {
+                    "id": r.place_id or str(r.id),
+                    "label": f"{r.name}, {r.state}, {r.country}",
+                    "city": r.name,
+                    "state": r.state,
+                    "country": r.country,
+                }
+            )
+
+    return items
+
+
+def get_carriers_for_pair(from_place_id: str, to_place_id: str) -> List[Dict]:
+    """Return carriers ordered by daily_trucks for a city pair.
+
+    Tries a specific rule first; falls back to the generic rule when no specific
+    entries are defined.
+    """
+    with Session(engine) as session:
+        origin = session.exec(
+            select(CityReference).where(CityReference.place_id == from_place_id)
+        ).first()
+        destination = session.exec(
+            select(CityReference).where(CityReference.place_id == to_place_id)
+        ).first()
+
+        rows = []
+        if origin and destination:
+            col = CarrierRoute.__table__.c.daily_trucks
+            oc = CarrierRoute.__table__.c.origin_city_id
+            dc = CarrierRoute.__table__.c.destination_city_id
+            q = (
+                select(Carrier.name, CarrierRoute.daily_trucks)
+                .join(Carrier, Carrier.id == CarrierRoute.carrier_id)
+                .where(oc == origin.id, dc == destination.id)
+                .order_by(col.desc())
+            )
+            rows = session.exec(q).all()
+
+        if not rows:
+            col = CarrierRoute.__table__.c.daily_trucks
+            oc = CarrierRoute.__table__.c.origin_city_id
+            dc = CarrierRoute.__table__.c.destination_city_id
+            q = (
+                select(Carrier.name, CarrierRoute.daily_trucks)
+                .join(Carrier, Carrier.id == CarrierRoute.carrier_id)
+                .where(oc.is_(None), dc.is_(None))
+                .order_by(col.desc())
+            )
+            rows = session.exec(q).all()
+
+        from app.metrics import inc as metrics_inc
+        metrics_inc("db_get_carriers")
+        return [{"name": name, "trucksPerDay": int(daily)} for name, daily in rows]

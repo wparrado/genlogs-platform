@@ -1,6 +1,5 @@
 from sqlmodel import Session, select
-from app.db import engine
-from app.models.db_models import CityReference, Carrier, CarrierRoute
+from app.providers.db import engine, CityReference, Carrier, CarrierRoute
 import uuid
 
 # Minimal id lookup by name helper

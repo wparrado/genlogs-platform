@@ -73,7 +73,7 @@ sequenceDiagram
     participant DB as PostgreSQL
 
     User->>SPA: Submits search (from, to)
-    SPA->>RL: POST /api/search
+    SPA->>RL: GET /api/search
     RL-->>SPA: 429 Too Many Requests (if limit exceeded)
     RL->>Routes: Request passes
 
@@ -202,7 +202,7 @@ C4Component
     title Component Diagram — FastAPI Backend
 
     Container_Boundary(backend, "FastAPI Backend") {
-        Component(routes, "api/routes", "FastAPI routers", "HTTP endpoints: GET /health, GET /api/cities, POST /api/search. Input validation, rate limiting (100 req/min), and response serialization.")
+        Component(routes, "api/routes", "FastAPI routers", "HTTP endpoints: GET /health, GET /api/cities, GET /api/search. Input validation, rate limiting (100 req/min), and response serialization.")
         Component(services, "services", "Python modules", "Business logic: carrier ranking, normalization, orchestration. Owns in-memory cache (TTLCache). No HTTP concerns.")
         Component(cache, "In-memory Cache", "cachetools TTLCache", "Cities cache: key=normalized_query, TTL=1 hour, max 256 entries. Search cache: key=(from_id, to_id), TTL=15 min, max 128 entries.")
         Component(providers, "providers", "Python modules", "External data abstraction: Google Maps provider (primary), mock provider (fallback), and database provider. Applies circuit breaker + exponential retry on outbound calls.")
@@ -278,7 +278,7 @@ Browser
 5. The backend returns normalized suggestions to the frontend.
 
 ### Route search flow
-1. The frontend submits the selected `from` and `to` cities to `POST /api/search`.
+1. The frontend submits the selected `from` and `to` cities to `GET /api/search`.
 2. The backend validates the request.
 3. The backend asks the primary maps provider for routes.
 4. If the primary provider fails, the backend retries through the fallback provider.
@@ -360,7 +360,7 @@ Public endpoints are protected by a rate limiter:
 | Endpoint | Limit |
 |---|---|
 | `GET /api/cities` | 100 requests / minute / client IP |
-| `POST /api/search` | 100 requests / minute / client IP |
+| `GET /api/search` | 100 requests / minute / client IP |
 | `GET /health` | *(exempt)* |
 
 Library: `slowapi`. Responses that exceed the limit return `429 Too Many Requests` with a `Retry-After` header.  
