@@ -9,5 +9,8 @@ module.exports = {
       tsconfig: '<rootDir>/tsconfig.json',
       isolatedModules: true
     }
+  },
+  moduleNameMapper: {
+    '\\.(css|less|scss|sass)$': '<rootDir>/src/__mocks__/styleMock.js'
   }
 };
