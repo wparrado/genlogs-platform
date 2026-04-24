@@ -1,0 +1,203 @@
+openapi: 3.1.0
+info:
+  title: GenLogs MVP Search API
+  version: 0.1.0
+  description: >
+    Contract-first API for the GenLogs MVP portal. The API stays stable whether
+    route and city data come from Google services or a fallback provider.
+servers:
+  - url: http://localhost:8000
+    description: Local development
+paths:
+  /health:
+    get:
+      summary: Health check
+      operationId: getHealth
+      responses:
+        "200":
+          description: Service is healthy
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [status]
+                properties:
+                  status:
+                    type: string
+                    example: ok
+  /api/cities:
+    get:
+      summary: Search city suggestions
+      operationId: getCitySuggestions
+      parameters:
+        - name: query
+          in: query
+          required: true
+          schema:
+            type: string
+            minLength: 2
+          description: Partial city text entered by the user
+      responses:
+        "200":
+          description: Matching city suggestions
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/CitySuggestion"
+        "400":
+          description: Invalid query
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /api/search:
+    post:
+      summary: Search routes and carrier rankings
+      operationId: searchRoutesAndCarriers
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SearchRequest"
+      responses:
+        "200":
+          description: Successful search response
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SearchResponse"
+        "400":
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "502":
+          description: Provider failure
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+components:
+  schemas:
+    SearchCity:
+      type: object
+      required:
+        - id
+        - label
+        - city
+        - state
+        - country
+      properties:
+        id:
+          type: string
+          description: Provider or internal city identifier
+          example: place_nyc
+        label:
+          type: string
+          example: New York, NY, USA
+        city:
+          type: string
+          example: New York
+        state:
+          type: string
+          example: NY
+        country:
+          type: string
+          example: US
+    CitySuggestion:
+      allOf:
+        - $ref: "#/components/schemas/SearchCity"
+    CarrierResult:
+      type: object
+      required:
+        - name
+        - trucksPerDay
+      properties:
+        name:
+          type: string
+          example: Knight-Swift Transport Services
+        trucksPerDay:
+          type: integer
+          minimum: 0
+          example: 10
+    RouteOption:
+      type: object
+      required:
+        - id
+        - summary
+        - durationText
+        - distanceText
+      properties:
+        id:
+          type: string
+          example: route_1
+        summary:
+          type: string
+          example: I-95 S
+        durationText:
+          type: string
+          example: 3 hr 52 min
+        distanceText:
+          type: string
+          example: 227 mi
+        mapEmbedUrl:
+          type: string
+          format: uri
+          nullable: true
+          example: https://www.google.com/maps/embed?pb=example
+        pathPayload:
+          description: Provider-safe route payload for map rendering when needed
+          nullable: true
+    SearchRequest:
+      type: object
+      required:
+        - from
+        - to
+      properties:
+        from:
+          $ref: "#/components/schemas/SearchCity"
+        to:
+          $ref: "#/components/schemas/SearchCity"
+    SearchResponse:
+      type: object
+      required:
+        - from
+        - to
+        - routes
+        - carriers
+      properties:
+        from:
+          $ref: "#/components/schemas/SearchCity"
+        to:
+          $ref: "#/components/schemas/SearchCity"
+        routes:
+          type: array
+          maxItems: 3
+          items:
+            $ref: "#/components/schemas/RouteOption"
+        carriers:
+          type: array
+          items:
+            $ref: "#/components/schemas/CarrierResult"
+    ErrorResponse:
+      type: object
+      required:
+        - code
+        - message
+      properties:
+        code:
+          type: string
+          example: invalid_request
+        message:
+          type: string
+          example: Both cities are required.
+        details:
+          nullable: true
