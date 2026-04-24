@@ -4,11 +4,12 @@ This directory is the source of truth for the GenLogs MVP and follows a Specific
 
 ## Spec set
 1. `product-spec.md`: MVP scope, user flow, functional behavior, and acceptance criteria.
-2. `architecture-spec.md`: module boundaries, information flow, configuration, and runtime decisions.
-3. `scaffold-spec.md`: detailed specification for Phase 1 Activity 4, covering the initial React and FastAPI project scaffold.
-4. `database-spec.md`: database design for the broader GenLogs platform deliverable.
-5. `search-api.openapi.yaml`: machine-readable API contract for the MVP backend.
-6. `test-spec.md`: TDD scenarios, contract tests, edge cases, and functional test coverage.
+2. `architecture-spec.md`: module boundaries, information flow, configuration, runtime decisions, and C4 diagrams.
+3. `adr.md`: **Architecture Decision Records** — the authoritative record of all significant architectural and toolchain decisions. Must be consulted before proposing any change that affects technology choices, layer boundaries, or quality gates.
+4. `scaffold-spec.md`: detailed specification for Phase 1 Activity 4, covering the initial React and FastAPI project scaffold.
+5. `database-spec.md`: database design for the broader GenLogs platform deliverable.
+6. `search-api.openapi.yaml`: machine-readable API contract for the MVP backend.
+7. `test-spec.md`: TDD scenarios, contract tests, edge cases, and functional test coverage.
 
 ## Intended package layout
 The package will evolve to contain:
