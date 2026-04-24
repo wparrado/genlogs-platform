@@ -43,7 +43,36 @@ def init_db() -> None:
 
 # Provider API: data access helpers used by services
 def get_city_by_place_id(place_id: str):
-    """Return CityReference for a given place_id or None."""
+    """Return CityReference for a given place_id or None.
+
+    Supports lightweight 'mock:' place_ids by resolving from backend/placeid_mappings.csv
+    when present so tests that use mock IDs don't need a populated DB.
+    """
+    # fast-path for mock ids without touching DB
+    if place_id and place_id.startswith("mock:"):
+        try:
+            import csv
+            import os
+
+            mappings_path = os.path.join(os.path.dirname(__file__), '..', '..', '..', '..', 'placeid_mappings.csv')
+            mappings_path = os.path.normpath(mappings_path)
+            if os.path.exists(mappings_path):
+                with open(mappings_path, newline='', encoding='utf-8') as f:
+                    reader = csv.DictReader(f)
+                    for row in reader:
+                        # CSV columns: city_id,label,old_place_id,new_place_id
+                        if row.get('old_place_id') == place_id or row.get('new_place_id') == place_id:
+                            label = (row.get('label') or '').strip()
+                            parts = [p.strip() for p in label.split(',')]
+                            name = parts[0] if parts else ''
+                            state = parts[1] if len(parts) > 1 else ''
+                            country = parts[2] if len(parts) > 2 else 'US'
+                            # build a detached CityReference-like object
+                            return CityReference(place_id=place_id, name=name, state=state, country=country, normalized_label=f"{name}, {state}, {country}".lower())
+        except Exception:
+            # Fall back to DB lookup on any error
+            pass
+
     with Session(engine) as session:
         return session.exec(select(CityReference).where(CityReference.place_id == place_id)).first()
 

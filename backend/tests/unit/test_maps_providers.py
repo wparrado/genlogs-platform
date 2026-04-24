@@ -37,5 +37,12 @@ def test_mock_provider_no_match(monkeypatch):
 
 
 def test_google_provider_raises_without_key():
+    # Ensure circuit state doesn't leak from other tests
+    try:
+        google._circuit.failures = 0
+        google._circuit.opened_at = None
+    except Exception:
+        pass
+
     with pytest.raises(RuntimeError):
         google.get_routes_for_pair("a", "b")
