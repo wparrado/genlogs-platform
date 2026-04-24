@@ -154,12 +154,46 @@ LIMIT 10;
 
 ---
 
+## Entity-Relationship diagram
+
+```mermaid
+erDiagram
+    city_reference {
+        UUID id PK
+        VARCHAR place_id UK
+        VARCHAR name
+        VARCHAR state
+        VARCHAR country
+        VARCHAR normalized_label
+        TIMESTAMPTZ created_at
+    }
+
+    carriers {
+        UUID id PK
+        VARCHAR name UK
+        BOOLEAN is_active
+        TIMESTAMPTZ created_at
+    }
+
+    carrier_routes {
+        UUID id PK
+        UUID origin_city_id FK "NULL = generic default"
+        UUID destination_city_id FK "NULL = generic default"
+        UUID carrier_id FK
+        SMALLINT daily_trucks
+        TIMESTAMPTZ created_at
+    }
+
+    city_reference ||--o{ carrier_routes : "origin"
+    city_reference ||--o{ carrier_routes : "destination"
+    carriers ||--o{ carrier_routes : "assigned to"
+```
+
+> **Nota:** `origin_city_id` y `destination_city_id` son NULLABLE. Cuando ambos son NULL la fila representa la regla genérica de fallback (FR-010). El CHECK constraint garantiza que nunca sea posible que sólo uno de los dos sea NULL.
+
+---
+
 ## Relationship summary
-```
-city_reference ←── carrier_routes ───→ city_reference
-                         │
-                         └──────────────────→ carriers
-```
 
 - One `city_reference` row can appear as origin or destination in many `carrier_routes`.
 - One `carriers` row can appear in many `carrier_routes` (across multiple routes).
