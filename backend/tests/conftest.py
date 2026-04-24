@@ -36,6 +36,21 @@ if os.path.exists(ENV_PATH):
 # By default, skip long-running external E2E tests unless RUN_E2E=1 is set in the environment.
 RUN_E2E = os.environ.get("RUN_E2E")
 
+# Make tests deterministic by preferring the local mock provider for mock:* ids
+# during normal unit/functional test runs. Integration/E2E tests (RUN_E2E=1)
+# will not enable this behavior.
+import app.config.settings as cfg
+import pytest
+
+@pytest.fixture(scope="session", autouse=True)
+def _prefer_mock_for_tests():
+    if not RUN_E2E:
+        try:
+            cfg.settings.genlogs_prefer_mock_for_mock_ids = True
+        except Exception:
+            # best-effort; tests will proceed with defaults if this fails
+            pass
+
 def pytest_collection_modifyitems(config, items):
     if RUN_E2E:
         return

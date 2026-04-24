@@ -27,7 +27,7 @@ jobs:
         run: uv sync --extra dev
 
       - name: Run architecture tests
-        run: uv run pytest ../tests/backend -v
+        run: uv run pytest tests -v
 
       - name: Run pylint
         run: |
@@ -102,4 +102,4 @@ jobs:
           sleep 2
       - name: Run E2E tests
         run: |
-          PYTHONPATH=./backend/src pytest tests/functional_e2e -q
+          PYTHONPATH=./backend/src pytest backend/tests/functional_e2e -q

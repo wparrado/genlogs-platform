@@ -34,7 +34,7 @@ until curl -sS http://127.0.0.1:8001/health >/dev/null 2>&1; do
 done
 
 echo "Running E2E pytest..."
-PYTHONPATH=./backend/src uv run pytest tests/functional_e2e -q
+PYTHONPATH=./backend/src uv run pytest backend/tests/functional_e2e -q
 
 TEST_STATUS=$?
 

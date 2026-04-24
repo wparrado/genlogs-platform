@@ -19,7 +19,8 @@ genlogs_platform/
   specs/
   backend/
   frontend/
-  tests/
+  backend/tests/
+  frontend/src/**/__tests__/
 ```
 
 ## Current assumptions

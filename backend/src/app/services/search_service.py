@@ -31,18 +31,24 @@ def get_routes_for_pair(from_place_id: str, to_place_id: str) -> List[Dict]:
     Try the Google provider first; if it raises or is unavailable, fall back to
     the local mock provider which derives deterministic routes from the DB.
     """
-    primary = (settings.genlogs_maps_provider or "mock").lower()
-
-    routes = []
-    if primary == "google":
-        try:
-            routes = google.get_routes_for_pair(from_place_id, to_place_id)
-        except Exception as exc:
-            logger.warning("Primary maps provider (google) failed: %s; falling back to mock", exc)
-            routes = mock.get_routes_for_pair(from_place_id, to_place_id)
-    else:
-        # If configured to use the mock provider as primary, just call it.
+    # In production flow: prefer primary (google) and only fall back to mock
+    # if the primary provider raises or is unavailable. Tests can opt-in to
+    # prefer the mock provider by setting the configuration flag.
+    if getattr(settings, 'genlogs_prefer_mock_for_mock_ids', False) and from_place_id and to_place_id and from_place_id.startswith("mock:") and to_place_id.startswith("mock:"):
         routes = mock.get_routes_for_pair(from_place_id, to_place_id)
+    else:
+        primary = (settings.genlogs_maps_provider or "mock").lower()
+
+        routes = []
+        if primary == "google":
+            try:
+                routes = google.get_routes_for_pair(from_place_id, to_place_id)
+            except Exception as exc:
+                logger.warning("Primary maps provider (google) failed: %s; falling back to mock", exc)
+                routes = mock.get_routes_for_pair(from_place_id, to_place_id)
+        else:
+            # If configured to use the mock provider as primary, just call it.
+            routes = mock.get_routes_for_pair(from_place_id, to_place_id)
 
     # Ensure each route has a numeric duration (seconds) for sorting. Providers
     # may supply 'duration' (seconds) or only 'durationText'. Attempt to parse

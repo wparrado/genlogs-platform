@@ -111,12 +111,14 @@ genlogs_platform/
         search/
       components/
       services/
-  tests/
-    backend/
+  backend/
+    tests/
       test_architecture.py
-    frontend/
-      dependency-cruiser.spec.md
-    functional/
+  frontend/
+    src/
+      **/__tests__/
+        dependency-cruiser.spec.md
+  functional/
 ```
 
 ## Backend scaffold requirements
@@ -244,8 +246,8 @@ genlogs_platform/
 - **AT-014** `frontend/src/features/search` may depend on shared `components` and `services`, but not the reverse.
 
 ### Test placement
-- **AT-015** The initial Archon tests should live under `tests/backend/test_architecture.py` or an equivalent backend test module that is clearly part of the automated suite.
-- **AT-016** The frontend architecture validation rules should live near the frontend scaffold, such as `frontend/.dependency-cruiser.cjs`, with documentation or a small test note under `tests/frontend/`.
+- **AT-015** The initial Archon tests should live under `backend/tests/test_architecture.py` or an equivalent backend test module that is clearly part of the automated suite.
+- **AT-016** The frontend architecture validation rules should live near the frontend scaffold, such as `frontend/.dependency-cruiser.cjs`, with documentation or a small test note under `frontend/src/**/__tests__/`.
 - **AT-017** The architecture tests must be runnable locally with the same validation commands used by CI and pre-commit.
 
 ## Local development contract

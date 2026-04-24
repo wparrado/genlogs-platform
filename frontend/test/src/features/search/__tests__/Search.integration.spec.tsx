@@ -1,4 +1,4 @@
-import { get } from '../../frontend/src/services/apiClient'
+import { get } from '../../../../../src/services/apiClient'
 
 describe('API client integration (scaffold)', () => {
   beforeEach(() => {

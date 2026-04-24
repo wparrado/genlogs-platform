@@ -1,2 +1,3 @@
-// Search feature — to be implemented in Phase 2
-export {}
+// Barrel file for search feature
+export { default as SearchForm } from './SearchForm'
+

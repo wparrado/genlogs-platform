@@ -63,6 +63,49 @@ def _call_google_directions(origin: str, destination: str, api_key: str) -> Dict
     return r.json()
 
 
+def _decode_polyline(polyline_str: str):
+    """Decode an encoded polyline string into a list of [lat, lng] pairs.
+
+    Implementation based on the Google polyline algorithm.
+    """
+    if not polyline_str:
+        return []
+    coords = []
+    index = 0
+    lat = 0
+    lng = 0
+    length = len(polyline_str)
+
+    while index < length:
+        shift = 0
+        result = 0
+        while True:
+            b = ord(polyline_str[index]) - 63
+            index += 1
+            result |= (b & 0x1f) << shift
+            shift += 5
+            if b < 0x20:
+                break
+        dlat = ~(result >> 1) if (result & 1) else (result >> 1)
+        lat += dlat
+
+        shift = 0
+        result = 0
+        while True:
+            b = ord(polyline_str[index]) - 63
+            index += 1
+            result |= (b & 0x1f) << shift
+            shift += 5
+            if b < 0x20:
+                break
+        dlng = ~(result >> 1) if (result & 1) else (result >> 1)
+        lng += dlng
+
+        coords.append([lat / 1e5, lng / 1e5])
+
+    return coords
+
+
 def get_routes_for_pair(from_place_id: str, to_place_id: str) -> List[Dict]:
     """Attempt to fetch route options from Google Directions API.
 
@@ -81,7 +124,19 @@ def get_routes_for_pair(from_place_id: str, to_place_id: str) -> List[Dict]:
     for attempt in range(3):
         try:
             metrics_inc("maps_google_attempts")
-            payload = _circuit.call(_call_google_directions, from_place_id, to_place_id, api_key)
+            # Google Directions accepts place_id:PLACE_ID to reference Google Place IDs.
+            def _normalize_place_param(p: Optional[str]) -> Optional[str]:
+                if not p:
+                    return p
+                if isinstance(p, str) and p.startswith("place_id:"):
+                    return p
+                # Common Google Place IDs begin with 'ChI' — prefix these so Directions treats them as place IDs
+                if isinstance(p, str) and p.startswith("ChI"):
+                    return f"place_id:{p}"
+                return p
+            origin_param = _normalize_place_param(from_place_id)
+            destination_param = _normalize_place_param(to_place_id)
+            payload = _circuit.call(_call_google_directions, origin_param, destination_param, api_key)
             routes = []
             for idx, leg in enumerate(payload.get("routes", [])[:3]):
                 # Derive a compact representation similar to mocks
@@ -99,6 +154,12 @@ def get_routes_for_pair(from_place_id: str, to_place_id: str) -> List[Dict]:
                     distance = None
                     duration_text = ""
                     distance_text = ""
+
+                # Try to extract an encoded overview polyline and decode it for frontend mapping
+                overview_poly = leg.get("overview_polyline", {}) or {}
+                encoded = overview_poly.get("points") if isinstance(overview_poly, dict) else None
+                path_payload = _decode_polyline(encoded) if encoded else None
+
                 routes.append(
                     {
                         "id": f"google_{idx}",
@@ -108,7 +169,7 @@ def get_routes_for_pair(from_place_id: str, to_place_id: str) -> List[Dict]:
                         "durationText": duration_text,
                         "distanceText": distance_text,
                         "mapEmbedUrl": None,
-                        "pathPayload": None,
+                        "pathPayload": path_payload,
                     }
                 )
             return routes
