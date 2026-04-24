@@ -152,7 +152,7 @@ Mixing HTTP routing, business logic, and external provider calls in the same mod
 A clear layer hierarchy enforces separation of concerns and makes each layer independently testable.
 
 ### Decision
-The backend follows a strict **four-layer architecture** inside `backend/app/`:
+The backend follows a strict **four-layer architecture** inside `backend/src/app/`:
 
 ```
 api/routes  →  services  →  providers  →  models
@@ -394,7 +394,7 @@ Hardcoding configuration values creates security and portability risks.
 A centralized, typed configuration object prevents scattered `os.getenv()` calls.
 
 ### Decision
-All backend configuration is centralized in `backend/app/config/settings.py` using **pydantic-settings**.
+All backend configuration is centralized in `backend/src/app/config/settings.py` using **pydantic-settings**.
 Configuration is loaded from environment variables, with an optional `.env` file for local development.
 The inner `Config` class pattern (Pydantic v1 style) must not be used; use `model_config = SettingsConfigDict(...)` instead.
 
@@ -473,7 +473,7 @@ All outbound provider calls must implement:
 
 Both are added to backend runtime dependencies in `pyproject.toml`.
 
-**Scope:** all classes in `backend/app/providers/` that make outbound HTTP calls.
+**Scope:** all classes in `backend/src/app/providers/` that make outbound HTTP calls.
 The `services` and `api/routes` layers must not implement retry or circuit-breaker logic;
 that responsibility belongs exclusively to the `providers` layer.
 
@@ -498,19 +498,19 @@ overload the process under load. A per-endpoint rate limit protects both the bac
 without requiring infrastructure changes at the MVP stage.
 
 ### Decision
-All public-facing endpoints (`GET /api/cities`, `POST /api/search`) must enforce a rate limit of
+All public-facing endpoints (`GET /api/cities`, `GET /api/search`) must enforce a rate limit of
 **100 requests per minute** per client IP address.
 
 `GET /health` is exempt (used by health checks and monitoring).
 
 **Implementation library:** `slowapi` (wraps the `limits` library; integrates natively with FastAPI/Starlette).
 
-The limiter is initialized once in `backend/app/main.py` and applied as a decorator on each route handler.
+The limiter is initialized once in `backend/src/app/main.py` and applied as a decorator on each route handler.
 The limit key is the client IP address extracted from the request.
 
 Rate-limit responses return **HTTP 429 Too Many Requests** with a `Retry-After` header.
 
-The limit value (`100/minute`) is defined as a constant in `backend/app/config/settings.py`
+The limit value (`100/minute`) is defined as a constant in `backend/src/app/config/settings.py`
 so it can be overridden via environment variable without code changes.
 
 ### Consequences
@@ -556,7 +556,7 @@ Full schema is defined in `specs/database-spec.md`.
 The database URL is never hardcoded; it is always injected via environment variable.
 
 ### Consequences
-- `GENLOGS_DATABASE_URL` is added to `backend/app/config/settings.py` and the `.env.example`.
+- `GENLOGS_DATABASE_URL` is added to `backend/src/app/config/settings.py` and the `.env.example`.
 - An ORM or query builder (SQLAlchemy or asyncpg) is added to backend runtime dependencies.
 - The `providers` boundary strictly owns all SQL; no raw queries appear in `services` or `api/routes`.
 - Local development requires a running PostgreSQL instance (Docker Compose or local install).
@@ -592,7 +592,7 @@ is an orchestration concern that belongs to `services`.
 | Search results | `(from_city_id, to_city_id)` | 15 minutes | 128 | `GENLOGS_CACHE_SEARCH_TTL_SECONDS` |
 
 `GENLOGS_CACHE_MAX_SIZE` controls the maximum entries per cache instance (default `256`).
-All three variables are defined in `backend/app/config/settings.py`.
+All three variables are defined in `backend/src/app/config/settings.py`.
 
 **Cache flow:**
 1. `services` checks the cache with the request key before calling `providers`.
@@ -608,6 +608,41 @@ All three variables are defined in `backend/app/config/settings.py`.
 - `cachetools` is added to backend runtime dependencies in `pyproject.toml`.
 - Tests must cover the cache hit path (no provider call) and the cache miss path (provider called and result stored).
 - Changing TTL values does not require a new ADR; changing the cache strategy (e.g., moving to Redis) does.
+
+---
+
+## ADR-021 — Metrics: Prometheus instrumentation and exposure
+
+**Status:** Accepted  
+**Date:** 2026-04-24
+
+### Context
+The backend must observe provider behavior (Google Maps), DB queries, and other runtime signals to detect regressions, trigger alerts, and support operational diagnostics. During early development a JSON endpoint and in-memory counters were used for convenience, but they do not integrate with standard monitoring tooling.
+
+### Decision
+Adopt **Prometheus** as the primary metrics system for the GenLogs backend. The application will use the `prometheus_client` library to register counters and other metrics in a private CollectorRegistry and expose them via an HTTP endpoint. When the library is not available (local development or constrained environments) the application will fall back to an in-memory counter store and return JSON for the `/api/metrics` route.
+
+### Consequences
+- `prometheus_client` is added to runtime dependencies used in CI and staging. The code tolerates its absence for local/dev runs.
+- A minimal set of counters is instrumented immediately: `maps_google_attempts`, `maps_google_failures`, `maps_google_circuit_open`, `db_get_carriers`. Additional metrics (histograms for provider latency, gauge for queue length) can be added iteratively.
+- The metrics endpoint returns Prometheus exposition (`text/plain; version=0.0.4`) when `prometheus_client` is present; otherwise it returns a JSON mapping of known counters. A private CollectorRegistry is used to avoid global registry conflicts during tests and reuse.
+- Tests can assert on the in-memory counters or call the Prometheus exposition when available. The CI job installs `prometheus-client` so integration environments expose Prometheus metrics.
+- Operational implication: add Prometheus scrape job for the service in staging; configure alerting rules for high `maps_google_failures` or high error rates on search endpoints.
+
+### Implementation
+- Add a small metrics abstraction (`backend/src/app/metrics.py`) that exposes `inc(name)`, `get(name)`, `reset()` and `prometheus_metrics_latest()`.
+- Instrument providers and DB provider calls to increment relevant counters.
+- Expose `/api/metrics` via FastAPI which returns Prometheus exposition when available and JSON fallback otherwise.
+- Ensure the CollectorRegistry is private to the application module to avoid collisions in unit tests.
+- Add unit tests that exercise both the in-memory fallback and the Prometheus path by monkeypatching or installing `prometheus_client` in CI.
+
+### Alternatives considered
+- Keep the JSON-only approach (rejected — incompatible with standard monitoring platforms and alerts).  
+- Use a Pushgateway pattern (rejected for MVP complexity and operation overhead).
+
+### State and next steps
+- Implementation completed in codebase: metrics abstraction, instrumentation and metrics endpoint with fallback.  
+- Next operational steps: add Prometheus scrape configuration in staging; create simple alert rules for provider failures and high latency; consider exposing metrics at `/metrics` root if required by environment.
 
 ---
 

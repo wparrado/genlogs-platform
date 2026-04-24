@@ -8,11 +8,18 @@ import os
 import pytest
 
 
-BASE = os.path.join(os.path.dirname(__file__), "..", "..", "backend", "app")
+BASE = os.path.join(os.path.dirname(__file__), "..", "..", "backend", "src", "app")
 
 
 def _module(path: str) -> str:
-    return os.path.normpath(os.path.join(BASE, path))
+    # Support legacy location app/models or new provider-backed location
+    # app/providers/db/models. If the legacy path exists prefer it, otherwise
+    # map models/... => providers/db/models/...
+    candidate = os.path.normpath(os.path.join(BASE, path))
+    if path.startswith("models") and not os.path.exists(candidate):
+        suffix = path[len("models"):].lstrip(os.sep)
+        candidate = os.path.normpath(os.path.join(BASE, "providers", "db", "models", suffix))
+    return candidate
 
 
 # ---------------------------------------------------------------------------

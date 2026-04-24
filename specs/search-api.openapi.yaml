@@ -57,15 +57,22 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
   /api/search:
-    post:
+    get:
       summary: Search routes and carrier rankings
       operationId: searchRoutesAndCarriers
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/SearchRequest"
+      parameters:
+        - name: from_id
+          in: query
+          required: true
+          schema:
+            type: string
+          description: Provider or internal city identifier for the origin
+        - name: to_id
+          in: query
+          required: true
+          schema:
+            type: string
+          description: Provider or internal city identifier for the destination
       responses:
         "200":
           description: Successful search response
