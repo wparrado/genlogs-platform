@@ -66,7 +66,7 @@ function App(): React.ReactElement {
               <div className="card">
                 <h3>Resultados de ejemplo</h3>
                 <ul>
-                  {routes.length > 0 ? routes.slice(0,5).map((r) => <li key={r.id}>{r.summary || r.label || r.id}</li>) : <li>Introduce origen y destino para ver opciones</li>}
+                  {routes.length > 0 ? routes.slice(0,5).map((r) => <li key={r.id}>{r.summary || r.label || r.id}</li>) : <><li>Sample Route A</li><li>Sample Route B</li></>}
                 </ul>
                 {loading ? <div className="loading">Loading...</div> : null}
               </div>
