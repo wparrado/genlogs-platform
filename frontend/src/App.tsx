@@ -68,7 +68,7 @@ function App(): React.ReactElement {
                 <ul>
                   {routes.length > 0 ? routes.slice(0,5).map((r) => <li key={r.id}>{r.summary || r.label || r.id}</li>) : <li>Introduce origen y destino para ver opciones</li>}
                 </ul>
-                {loading ? <div className="loading">Cargando...</div> : null}
+                {loading ? <div className="loading">Loading...</div> : null}
               </div>
             </div>
           </div>
