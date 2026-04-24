@@ -1,14 +1,59 @@
 from sqlmodel import Session, select
 from app.providers.db import engine, CityReference, Carrier, CarrierRoute
 import uuid
+import os
+import requests
+import logging
+
+logger = logging.getLogger(__name__)
 
 # Minimal id lookup by name helper
+
+
+from typing import Optional
+
+def _find_place_id_via_google(query_text: str, api_key: str) -> Optional[str]:
+    url = "https://maps.googleapis.com/maps/api/place/findplacefromtext/json"
+    params = {
+        "input": query_text,
+        "inputtype": "textquery",
+        "fields": "place_id",
+        "key": api_key,
+    }
+    try:
+        r = requests.get(url, params=params, timeout=5)
+        r.raise_for_status()
+        payload = r.json()
+        cand = payload.get("candidates", [])
+        if cand:
+            return cand[0].get("place_id")
+    except Exception as exc:
+        logger.debug("Google Find Place failed for %s: %s", query_text, exc)
+    return None
+
 
 def get_or_create_city(session: Session, name, state, country='US', place_id=None, normalized_label=None):
     norm = (normalized_label or f"{name}, {state}, {country}").lower()
     existing = session.exec(select(CityReference).where(CityReference.normalized_label == norm)).first()
     if existing:
+        # If existing row has no place_id but we were given one, attach it
+        if place_id and not existing.place_id:
+            existing.place_id = place_id
+            session.add(existing)
+            session.commit()
+            session.refresh(existing)
         return existing
+
+    # If no explicit place_id provided, and a Google API key is configured,
+    # attempt to resolve the place_id via Find Place so seeded cities match Google ids.
+    if not place_id:
+        api_key = os.environ.get("GENLOGS_GOOGLE_API_KEY")
+        if api_key:
+            query_text = f"{name}, {state}, {country}"
+            pid = _find_place_id_via_google(query_text, api_key)
+            if pid:
+                place_id = pid
+
     c = CityReference(place_id=place_id or f"mock:{name.lower().replace(' ','_')}", name=name, state=state, country=country, normalized_label=norm)
     session.add(c)
     session.commit()

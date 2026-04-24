@@ -92,14 +92,14 @@ jobs:
           until pg_isready -h localhost -U genlogs; do sleep 1; done
       - name: Run migrations
         run: |
-          PYTHONPATH=./backend alembic -c backend/alembic.ini upgrade head
+          PYTHONPATH=./backend/src alembic -c backend/alembic.ini upgrade head
       - name: Seed DB
         run: |
-          PYTHONPATH=./backend python backend/scripts/seed_data.py
+          PYTHONPATH=./backend/src python backend/scripts/seed_data.py
       - name: Start uvicorn
         run: |
-          PYTHONPATH=./backend uv run uvicorn app.main:app --host 127.0.0.1 --port 8001 &
+          PYTHONPATH=./backend/src uv run uvicorn app.main:app --host 127.0.0.1 --port 8001 &
           sleep 2
       - name: Run E2E tests
         run: |
-          PYTHONPATH=./backend pytest tests/functional_e2e -q
+          PYTHONPATH=./backend/src pytest tests/functional_e2e -q

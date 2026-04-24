@@ -8,7 +8,9 @@
     "build": "tsc && vite build",
     "preview": "vite preview",
     "lint": "eslint src --ext ts,tsx --report-unused-disable-directives --max-warnings 0",
-    "arch:validate": "depcruise src --config .dependency-cruiser.cjs"
+    "arch:validate": "depcruise src --config .dependency-cruiser.cjs",
+    "test": "jest --passWithNoTests --config jest.config.cjs",
+    "test:watch": "jest --watchAll --config jest.config.cjs"
   },
   "dependencies": {
     "react": "^18.3.1",
@@ -24,6 +26,13 @@
     "eslint": "^8.57.0",
     "eslint-plugin-import": "^2.29.1",
     "typescript": "^5.4.5",
-    "vite": "^5.3.1"
+    "vite": "^5.3.1",
+    "jest": "^29.6.1",
+    "ts-jest": "^29.1.0",
+    "jest-environment-jsdom": "^29.6.1",
+    "@types/jest": "^29.5.2",
+    "@testing-library/react": "^14.0.0",
+    "@testing-library/jest-dom": "^6.0.0",
+    "@testing-library/user-event": "^14.4.3"
   }
 }

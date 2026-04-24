@@ -1,0 +1,76 @@
+"""Search service: carrier lookup and deterministic route options.
+
+This module contains the business logic for carrier ranking lookup and a small
+set of deterministic mock routes used in functional tests.
+"""
+
+from __future__ import annotations
+
+from typing import Dict, List
+
+from app.providers import db as db_provider
+from app.providers.maps import google, mock
+from app.config.settings import settings
+import logging
+
+logger = logging.getLogger(__name__)
+
+
+def get_carriers_for_pair(from_place_id: str, to_place_id: str) -> List[Dict]:
+    """Delegate carrier lookup to the DB provider.
+
+    The provider encapsulates SQL access so services remain implementation
+    independent and easier to test.
+    """
+    return db_provider.get_carriers_for_pair(from_place_id, to_place_id)
+
+
+def get_routes_for_pair(from_place_id: str, to_place_id: str) -> List[Dict]:
+    """Return route options using primary maps provider (Google) with DB-backed mock fallback.
+
+    Try the Google provider first; if it raises or is unavailable, fall back to
+    the local mock provider which derives deterministic routes from the DB.
+    """
+    primary = (settings.genlogs_maps_provider or "mock").lower()
+
+    routes = []
+    if primary == "google":
+        try:
+            routes = google.get_routes_for_pair(from_place_id, to_place_id)
+        except Exception as exc:
+            logger.warning("Primary maps provider (google) failed: %s; falling back to mock", exc)
+            routes = mock.get_routes_for_pair(from_place_id, to_place_id)
+    else:
+        # If configured to use the mock provider as primary, just call it.
+        routes = mock.get_routes_for_pair(from_place_id, to_place_id)
+
+    # Ensure each route has a numeric duration (seconds) for sorting. Providers
+    # may supply 'duration' (seconds) or only 'durationText'. Attempt to parse
+    # durationText when necessary; otherwise treat missing durations as large.
+    def _parse_duration_text(txt: str):
+        if not txt:
+            return None
+        txt = txt.lower()
+        h = 0
+        m = 0
+        try:
+            if 'hr' in txt or 'hour' in txt:
+                parts = txt.replace('hours', 'hr').replace('hour', 'hr').split('hr')
+                h_part = parts[0].strip()
+                h = int(h_part) if h_part.isdigit() else 0
+                if len(parts) > 1 and 'min' in parts[1]:
+                    m_part = parts[1].split('min')[0].strip()
+                    m = int(m_part) if m_part.isdigit() else 0
+            elif 'min' in txt:
+                m = int(txt.split('min')[0].strip())
+            return h * 3600 + m * 60
+        except Exception:
+            return None
+
+    for r in routes:
+        if r.get('duration') is None:
+            r['duration'] = _parse_duration_text(r.get('durationText')) or 10**9
+
+    # Return top-3 fastest routes (smallest duration)
+    routes_sorted = sorted(routes, key=lambda x: x.get('duration', 10**9))
+    return routes_sorted[:3]

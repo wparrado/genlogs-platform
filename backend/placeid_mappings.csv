@@ -1,0 +1,5 @@
+city_id,label,old_place_id,new_place_id
+ab1ed7a9-e7a9-4c53-bf56-ffda66fd3be4,"Los Angeles, CA, US",mock:los_angeles,ChIJE9on3F3HwoAR9AhGJW_fL-I
+b55e02ac-b20e-4200-b447-19c04c893e6b,"New York, NY, US",mock:new_york,ChIJOwg_06VPwokRYv534QaPC8g
+23c39634-f629-4e0d-a359-1b27954cbfc8,"San Francisco, CA, US",mock:san_francisco,ChIJIQBpAG2ahYAR_6128GcTUEo
+ee00f321-1ca8-4225-a80f-560e55c1214f,"Washington, DC, US",mock:washington,ChIJW-T2Wt7Gt4kRKl2I1CJFUsI

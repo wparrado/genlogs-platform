@@ -8,7 +8,7 @@ import os
 import pytest
 
 
-BASE = os.path.join(os.path.dirname(__file__), "..", "..", "backend", "app")
+BASE = os.path.join(os.path.dirname(__file__), "..", "..", "backend", "src", "app")
 
 
 def _module(path: str) -> str:

@@ -15,14 +15,14 @@ until docker-compose exec -T db pg_isready -U genlogs >/dev/null 2>&1; do
 done
 
 echo "\nRunning migrations..."
-PYTHONPATH=./backend uv run alembic -c backend/alembic.ini upgrade head
+PYTHONPATH=./backend/src uv run alembic -c backend/alembic.ini upgrade head
 
 echo "Seeding data..."
-PYTHONPATH=./backend uv run python backend/scripts/seed_data.py
+PYTHONPATH=./backend/src uv run python backend/scripts/seed_data.py
 
 # Start uvicorn on port 8001 and write PID
 echo "Starting uvicorn on :8001"
-PYTHONPATH=./backend uv run uvicorn app.main:app --host 127.0.0.1 --port 8001 --log-level warning &
+PYTHONPATH=./backend/src uv run uvicorn app.main:app --host 127.0.0.1 --port 8001 --log-level warning &
 SERVER_PID=$!
 echo $SERVER_PID > /tmp/genlogs_uvicorn.pid
 
@@ -34,7 +34,7 @@ until curl -sS http://127.0.0.1:8001/health >/dev/null 2>&1; do
 done
 
 echo "Running E2E pytest..."
-PYTHONPATH=./backend uv run pytest tests/functional_e2e -q
+PYTHONPATH=./backend/src uv run pytest tests/functional_e2e -q
 
 TEST_STATUS=$?
 

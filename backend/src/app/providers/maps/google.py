@@ -90,12 +90,21 @@ def get_routes_for_pair(from_place_id: str, to_place_id: str) -> List[Dict]:
                 duration_text = ""
                 distance_text = ""
                 if legs:
+                    duration = legs[0].get("duration", {}).get("value")
+                    distance = legs[0].get("distance", {}).get("value")
                     duration_text = legs[0].get("duration", {}).get("text", "")
                     distance_text = legs[0].get("distance", {}).get("text", "")
+                else:
+                    duration = None
+                    distance = None
+                    duration_text = ""
+                    distance_text = ""
                 routes.append(
                     {
                         "id": f"google_{idx}",
                         "summary": summary,
+                        "duration": duration,
+                        "distance": distance,
                         "durationText": duration_text,
                         "distanceText": distance_text,
                         "mapEmbedUrl": None,

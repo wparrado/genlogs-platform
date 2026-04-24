@@ -6,6 +6,6 @@ provider (used by tests) and a Google provider (calls Directions API when an
 API key is configured).
 """
 
-from . import mock, google
+from . import mock, google, google_places
 
-__all__ = ["mock", "google"]
+__all__ = ["mock", "google", "google_places"]

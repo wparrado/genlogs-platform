@@ -6,7 +6,11 @@ import pytest
 # Compute project root (two levels up from tests/backend -> genlogs_platform)
 ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..'))
 BACKEND = os.path.join(ROOT, 'backend')
-# Insert backend path so imports like `from app.main import app` work without setting PYTHONPATH
+BACKEND_SRC = os.path.join(BACKEND, 'src')
+# Insert backend src path so imports like `from app.main import app` work without setting PYTHONPATH
+if BACKEND_SRC not in sys.path:
+    sys.path.insert(0, BACKEND_SRC)
+# Also insert backend path so modules in backend/ (e.g., scripts) can be imported directly
 if BACKEND not in sys.path:
     sys.path.insert(0, BACKEND)
 

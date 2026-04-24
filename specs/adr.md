@@ -152,7 +152,7 @@ Mixing HTTP routing, business logic, and external provider calls in the same mod
 A clear layer hierarchy enforces separation of concerns and makes each layer independently testable.
 
 ### Decision
-The backend follows a strict **four-layer architecture** inside `backend/app/`:
+The backend follows a strict **four-layer architecture** inside `backend/src/app/`:
 
 ```
 api/routes  →  services  →  providers  →  models
@@ -394,7 +394,7 @@ Hardcoding configuration values creates security and portability risks.
 A centralized, typed configuration object prevents scattered `os.getenv()` calls.
 
 ### Decision
-All backend configuration is centralized in `backend/app/config/settings.py` using **pydantic-settings**.
+All backend configuration is centralized in `backend/src/app/config/settings.py` using **pydantic-settings**.
 Configuration is loaded from environment variables, with an optional `.env` file for local development.
 The inner `Config` class pattern (Pydantic v1 style) must not be used; use `model_config = SettingsConfigDict(...)` instead.
 
@@ -473,7 +473,7 @@ All outbound provider calls must implement:
 
 Both are added to backend runtime dependencies in `pyproject.toml`.
 
-**Scope:** all classes in `backend/app/providers/` that make outbound HTTP calls.
+**Scope:** all classes in `backend/src/app/providers/` that make outbound HTTP calls.
 The `services` and `api/routes` layers must not implement retry or circuit-breaker logic;
 that responsibility belongs exclusively to the `providers` layer.
 
@@ -505,12 +505,12 @@ All public-facing endpoints (`GET /api/cities`, `GET /api/search`) must enforce 
 
 **Implementation library:** `slowapi` (wraps the `limits` library; integrates natively with FastAPI/Starlette).
 
-The limiter is initialized once in `backend/app/main.py` and applied as a decorator on each route handler.
+The limiter is initialized once in `backend/src/app/main.py` and applied as a decorator on each route handler.
 The limit key is the client IP address extracted from the request.
 
 Rate-limit responses return **HTTP 429 Too Many Requests** with a `Retry-After` header.
 
-The limit value (`100/minute`) is defined as a constant in `backend/app/config/settings.py`
+The limit value (`100/minute`) is defined as a constant in `backend/src/app/config/settings.py`
 so it can be overridden via environment variable without code changes.
 
 ### Consequences
@@ -556,7 +556,7 @@ Full schema is defined in `specs/database-spec.md`.
 The database URL is never hardcoded; it is always injected via environment variable.
 
 ### Consequences
-- `GENLOGS_DATABASE_URL` is added to `backend/app/config/settings.py` and the `.env.example`.
+- `GENLOGS_DATABASE_URL` is added to `backend/src/app/config/settings.py` and the `.env.example`.
 - An ORM or query builder (SQLAlchemy or asyncpg) is added to backend runtime dependencies.
 - The `providers` boundary strictly owns all SQL; no raw queries appear in `services` or `api/routes`.
 - Local development requires a running PostgreSQL instance (Docker Compose or local install).
@@ -592,7 +592,7 @@ is an orchestration concern that belongs to `services`.
 | Search results | `(from_city_id, to_city_id)` | 15 minutes | 128 | `GENLOGS_CACHE_SEARCH_TTL_SECONDS` |
 
 `GENLOGS_CACHE_MAX_SIZE` controls the maximum entries per cache instance (default `256`).
-All three variables are defined in `backend/app/config/settings.py`.
+All three variables are defined in `backend/src/app/config/settings.py`.
 
 **Cache flow:**
 1. `services` checks the cache with the request key before calling `providers`.
@@ -630,7 +630,7 @@ Adopt **Prometheus** as the primary metrics system for the GenLogs backend. The 
 - Operational implication: add Prometheus scrape job for the service in staging; configure alerting rules for high `maps_google_failures` or high error rates on search endpoints.
 
 ### Implementation
-- Add a small metrics abstraction (`backend/app/metrics.py`) that exposes `inc(name)`, `get(name)`, `reset()` and `prometheus_metrics_latest()`.
+- Add a small metrics abstraction (`backend/src/app/metrics.py`) that exposes `inc(name)`, `get(name)`, `reset()` and `prometheus_metrics_latest()`.
 - Instrument providers and DB provider calls to increment relevant counters.
 - Expose `/api/metrics` via FastAPI which returns Prometheus exposition when available and JSON fallback otherwise.
 - Ensure the CollectorRegistry is private to the application module to avoid collisions in unit tests.

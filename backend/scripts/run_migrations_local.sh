@@ -18,9 +18,9 @@ until docker-compose exec -T db pg_isready -U genlogs >/dev/null 2>&1; do
 done
 
 echo "\nPostgres is ready. Running Alembic migrations..."
-PYTHONPATH=./backend uv run alembic -c backend/alembic.ini upgrade head
+PYTHONPATH=./backend/src uv run alembic -c backend/alembic.ini upgrade head
 
 echo "Seeding database with minimal data..."
-PYTHONPATH=./backend uv run python backend/scripts/seed_data.py
+PYTHONPATH=./backend/src uv run python backend/scripts/seed_data.py
 
 echo "Migrations and seed complete."

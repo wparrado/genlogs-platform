@@ -1,4 +1,7 @@
-const BASE_URL: string = import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:8000'
+// Runtime-safe base URL resolver for dev, prod, and test environments
+const BASE_URL: string = (globalThis as any).__VITE_API_BASE_URL__
+  ?? (typeof process !== 'undefined' ? (process.env.VITE_API_BASE_URL as string | undefined) : undefined)
+  ?? 'http://localhost:8000'
 
 export async function get<T>(path: string): Promise<T> {
   const response = await fetch(`${BASE_URL}${path}`)

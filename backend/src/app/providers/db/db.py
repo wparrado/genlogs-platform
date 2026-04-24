@@ -48,6 +48,8 @@ def get_city_by_place_id(place_id: str):
         return session.exec(select(CityReference).where(CityReference.place_id == place_id)).first()
 
 
+
+
 def suggest_cities(prefix: str, limit: int = 10) -> List[Dict]:
     """Return up to ``limit`` cities whose normalized_label starts with prefix.
 

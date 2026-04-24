@@ -364,7 +364,7 @@ Public endpoints are protected by a rate limiter:
 | `GET /health` | *(exempt)* |
 
 Library: `slowapi`. Responses that exceed the limit return `429 Too Many Requests` with a `Retry-After` header.  
-The limit value is configurable via `GENLOGS_RATE_LIMIT` in `backend/app/config/settings.py`.
+The limit value is configurable via `GENLOGS_RATE_LIMIT` in `backend/src/app/config/settings.py`.
 
 ## Error strategy
 1. Validation errors return a stable `400` error response.

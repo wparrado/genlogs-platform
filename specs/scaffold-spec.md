@@ -79,24 +79,25 @@ genlogs_platform/
     Dockerfile
     .dockerignore
     pyproject.toml
-    app/
-      __init__.py
-      main.py
-      api/
+    src/
+      app/
         __init__.py
-        routes/
+        main.py
+        api/
           __init__.py
-          health.py
-          search.py
-      config/
-        __init__.py
-        settings.py
-      services/
-        __init__.py
-      providers/
-        __init__.py
-      models/
-        __init__.py
+          routes/
+            __init__.py
+            health.py
+            search.py
+        config/
+          __init__.py
+          settings.py
+        services/
+          __init__.py
+        providers/
+          __init__.py
+        models/
+          __init__.py
   frontend/
     package.json
     .dependency-cruiser.cjs
@@ -120,12 +121,12 @@ genlogs_platform/
 
 ## Backend scaffold requirements
 ### App bootstrap
-- **BS-001** The backend must expose a FastAPI application entrypoint in `backend/app/main.py`.
+- **BS-001** The backend must expose a FastAPI application entrypoint in `backend/src/app/main.py`.
 - **BS-002** The application must register a `GET /health` endpoint.
 - **BS-003** The application must reserve a route module for the future search endpoints, even if the business logic is not implemented yet.
 
 ### Configuration
-- **BS-004** Backend configuration must be centralized in `backend/app/config/settings.py`.
+- **BS-004** Backend configuration must be centralized in `backend/src/app/config/settings.py`.
 - **BS-005** The scaffold must define placeholders for:
   1. `GENLOGS_ENV`
   2. `GENLOGS_MAPS_PROVIDER`
