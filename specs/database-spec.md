@@ -1,162 +1,174 @@
 # Database specification
 
-## Scope of this design
-The technical test asks for a database design for the broader GenLogs platform, even though the MVP portal simulation itself does not need database storage. This spec therefore defines the long-term platform data model and explicitly keeps the MVP app stateless for now.
+## Scope
+This specification models **only the data required to support the MVP features**:
+1. City autocomplete fallback when Google Maps is unavailable.
+2. Carrier master data for the required carrier rankings.
+3. Carrier route rules encoding the business logic from FR-009 and FR-010.
 
-## Design goals
-1. Store highway camera captures and detection outputs.
-2. Link plate or truck-number evidence to carriers and trucks.
-3. Preserve external regulatory enrichments from USDOT and Safer FMCSA.
-4. Support corridor analytics such as carrier traffic between city pairs.
+The MVP portal itself is largely stateless (no user sessions, no search history).
+The database exists to make the carrier ranking rules and city fallback data queryable and maintainable
+without hardcoding them in application code.
 
-## Core entities
-### 1. camera_locations
-Stores the highway cameras operated by the platform.
+---
 
-Key fields:
-- `id`
-- `name`
-- `highway_code`
-- `latitude`
-- `longitude`
-- `city`
-- `state`
-- `is_active`
+## Entities
 
-### 2. captured_images
-Stores image capture metadata.
+### 1. `city_reference`
+Stores normalized city entities used as the autocomplete fallback when the Google Maps provider
+is unavailable (circuit open) or the mock provider is active.
 
-Key fields:
-- `id`
-- `camera_location_id`
-- `captured_at`
-- `image_uri`
-- `processing_status`
-- `checksum`
+| Column | Type | Constraints | Description |
+|---|---|---|---|
+| `id` | `UUID` | PK | Stable internal identifier |
+| `place_id` | `VARCHAR(255)` | UNIQUE | Google Maps place ID, or a mock ID in test data |
+| `name` | `VARCHAR(100)` | NOT NULL | City display name (e.g., `New York`) |
+| `state` | `VARCHAR(100)` | NOT NULL | State or region (e.g., `NY`) |
+| `country` | `VARCHAR(10)` | NOT NULL, DEFAULT `'US'` | ISO country code |
+| `normalized_label` | `VARCHAR(200)` | NOT NULL | Searchable label: `new york, ny, us` (lowercased) |
+| `created_at` | `TIMESTAMPTZ` | NOT NULL, DEFAULT `NOW()` | Record creation time |
 
-### 3. plate_candidates
-Stores OCR outputs or truck-number candidates detected from images.
+**Indexes:**
+- `idx_city_reference_normalized_label` on `normalized_label` — supports prefix search for autocomplete.
+- `idx_city_reference_place_id` on `place_id` — supports deduplication on upsert.
 
-Key fields:
-- `id`
-- `captured_image_id`
-- `candidate_text`
-- `confidence_score`
-- `bounding_box`
+**Seed data required (minimum):**
+The following cities must be present to support the two canonical carrier rule pairs (FR-009):
 
-### 4. logo_detections
-Stores logo matches found in the image.
+| `name` | `state` | `normalized_label` |
+|---|---|---|
+| New York | NY | `new york, ny, us` |
+| Washington | DC | `washington, dc, us` |
+| San Francisco | CA | `san francisco, ca, us` |
+| Los Angeles | CA | `los angeles, ca, us` |
 
-Key fields:
-- `id`
-- `captured_image_id`
-- `carrier_name_detected`
-- `confidence_score`
-- `bounding_box`
+---
 
-### 5. carriers
-Stores normalized carrier identities.
+### 2. `carriers`
+Stores the carrier entities referenced in carrier ranking results.
 
-Key fields:
-- `id`
-- `name`
-- `usdot_number`
-- `mc_number`
-- `status`
+| Column | Type | Constraints | Description |
+|---|---|---|---|
+| `id` | `UUID` | PK | Stable internal identifier |
+| `name` | `VARCHAR(200)` | NOT NULL, UNIQUE | Full carrier display name |
+| `is_active` | `BOOLEAN` | NOT NULL, DEFAULT `TRUE` | Soft-disable a carrier without deleting rules |
+| `created_at` | `TIMESTAMPTZ` | NOT NULL, DEFAULT `NOW()` | Record creation time |
 
-### 6. trucks
-Stores normalized truck identities when they can be inferred.
+**Seed data required:**
 
-Key fields:
-- `id`
-- `carrier_id`
-- `plate_number`
-- `plate_state`
-- `truck_number`
-- `last_verified_at`
+| `name` |
+|---|
+| Knight-Swift Transport Services |
+| J.B. Hunt Transport Services Inc |
+| YRC Worldwide |
+| XPO Logistics |
+| Schneider |
+| Landstar Systems |
+| UPS Inc. |
+| FedEx Corp |
 
-### 7. truck_observations
-Stores the best-effort link between a detected truck and a camera event.
+---
 
-Key fields:
-- `id`
-- `captured_image_id`
-- `truck_id`
-- `carrier_id`
-- `observation_confidence`
-- `matched_from`
+### 3. `carrier_route_rules`
+Encodes the carrier ranking business rules from FR-009 and FR-010.
 
-### 8. usdot_profiles
-Stores normalized enrichment data from USDOT.
+A rule with `origin_city_id IS NULL AND destination_city_id IS NULL` is the **generic default rule**
+applied to any city pair that has no specific rule defined.
 
-Key fields:
-- `id`
-- `carrier_id`
-- `legal_name`
-- `physical_address`
-- `fleet_size`
-- `snapshot_taken_at`
+A rule with both city IDs set is a **specific route override** for that exact city pair.
 
-### 9. safer_fmcsa_snapshots
-Stores periodic compliance snapshots from Safer FMCSA.
+| Column | Type | Constraints | Description |
+|---|---|---|---|
+| `id` | `UUID` | PK | Stable internal identifier |
+| `origin_city_id` | `UUID` | FK → `city_reference.id`, NULLABLE | Origin city; NULL means generic default |
+| `destination_city_id` | `UUID` | FK → `city_reference.id`, NULLABLE | Destination city; NULL means generic default |
+| `carrier_id` | `UUID` | FK → `carriers.id`, NOT NULL | The carrier this rule applies to |
+| `rank` | `SMALLINT` | NOT NULL, CHECK ≥ 1 | Display rank position (1 = highest) |
+| `daily_trucks` | `SMALLINT` | NOT NULL, CHECK ≥ 0 | Trucks per day on this route for this carrier |
+| `created_at` | `TIMESTAMPTZ` | NOT NULL, DEFAULT `NOW()` | Record creation time |
 
-Key fields:
-- `id`
-- `carrier_id`
-- `safety_rating`
-- `insurance_status`
-- `inspection_count`
-- `snapshot_taken_at`
+**Unique constraint:** `(origin_city_id, destination_city_id, carrier_id)` — one rule per carrier per route.
 
-### 10. city_reference
-Stores normalized city entities for reporting and aggregation.
+**Indexes:**
+- `idx_carrier_route_rules_cities` on `(origin_city_id, destination_city_id)` — used in every route search query.
 
-Key fields:
-- `id`
-- `provider_place_id`
-- `city`
-- `state`
-- `country`
-- `normalized_label`
+**Seed data required (from FR-009 and FR-010):**
 
-### 11. inferred_trips
-Stores inferred movement between two observations.
+*New York, NY → Washington, DC:*
 
-Key fields:
-- `id`
-- `truck_id`
-- `origin_observation_id`
-- `destination_observation_id`
-- `origin_city_id`
-- `destination_city_id`
-- `started_at`
-- `ended_at`
-- `inference_score`
+| `origin` | `destination` | `carrier` | `rank` | `daily_trucks` |
+|---|---|---|---|---|
+| New York, NY | Washington, DC | Knight-Swift Transport Services | 1 | 10 |
+| New York, NY | Washington, DC | J.B. Hunt Transport Services Inc | 2 | 7 |
+| New York, NY | Washington, DC | YRC Worldwide | 3 | 5 |
 
-### 12. corridor_daily_stats
-Stores aggregate counts used by the portal-style analysis layer.
+*San Francisco, CA → Los Angeles, CA:*
 
-Key fields:
-- `id`
-- `origin_city_id`
-- `destination_city_id`
-- `carrier_id`
-- `stat_date`
-- `truck_count`
+| `origin` | `destination` | `carrier` | `rank` | `daily_trucks` |
+|---|---|---|---|---|
+| San Francisco, CA | Los Angeles, CA | XPO Logistics | 1 | 9 |
+| San Francisco, CA | Los Angeles, CA | Schneider | 2 | 6 |
+| San Francisco, CA | Los Angeles, CA | Landstar Systems | 3 | 2 |
+
+*Generic default (any other pair):*
+
+| `origin` | `destination` | `carrier` | `rank` | `daily_trucks` |
+|---|---|---|---|---|
+| NULL | NULL | UPS Inc. | 1 | 11 |
+| NULL | NULL | FedEx Corp | 2 | 9 |
+
+---
+
+## Query patterns
+
+### Carrier lookup for a route
+```sql
+-- 1. Try specific rule for the given city pair
+SELECT c.name, r.rank, r.daily_trucks
+FROM carrier_route_rules r
+JOIN carriers c ON c.id = r.carrier_id
+WHERE r.origin_city_id = :origin_id
+  AND r.destination_city_id = :destination_id
+  AND c.is_active = TRUE
+ORDER BY r.rank;
+
+-- 2. If no rows returned, fall back to generic default
+SELECT c.name, r.rank, r.daily_trucks
+FROM carrier_route_rules r
+JOIN carriers c ON c.id = r.carrier_id
+WHERE r.origin_city_id IS NULL
+  AND r.destination_city_id IS NULL
+  AND c.is_active = TRUE
+ORDER BY r.rank;
+```
+
+### City autocomplete fallback
+```sql
+SELECT id, name, state, country, normalized_label
+FROM city_reference
+WHERE normalized_label LIKE :prefix || '%'
+ORDER BY normalized_label
+LIMIT 10;
+```
+
+---
 
 ## Relationship summary
-1. One camera location has many captured images.
-2. One captured image can have many plate candidates and logo detections.
-3. One carrier can have many trucks and many regulatory snapshots.
-4. One truck can have many observations and inferred trips.
-5. Corridor aggregates roll up inferred trips by city pair, carrier, and day.
+```
+city_reference ←── carrier_route_rules ───→ city_reference
+                         │
+                         └──────────────────→ carriers
+```
 
-## Indexing guidance
-1. Index `captured_images(camera_location_id, captured_at)`.
-2. Index `plate_candidates(candidate_text)`.
-3. Index `carriers(usdot_number)` and `carriers(name)`.
-4. Index `trucks(plate_number, plate_state)` and `trucks(truck_number)`.
-5. Index `corridor_daily_stats(origin_city_id, destination_city_id, stat_date)`.
+- One `city_reference` row can appear as origin or destination in many `carrier_route_rules`.
+- One `carriers` row can appear in many `carrier_route_rules` (across multiple routes).
+- The generic default rule has no city reference FK (both are NULL).
 
-## MVP note
-The portal simulation for the technical test should not depend on these tables. Carrier results can remain in code for the MVP while this design supports the separate database-design deliverable.
+---
+
+## Non-goals for this spec
+1. Search history or user sessions.
+2. Camera captures, image processing, plate detection.
+3. USDOT or FMCSA regulatory data.
+4. Corridor analytics or truck observation data.
+5. Any table not directly required by the city autocomplete or carrier ranking features.
