@@ -9,8 +9,8 @@
     "preview": "vite preview",
     "lint": "eslint src --ext ts,tsx --report-unused-disable-directives --max-warnings 0",
     "arch:validate": "depcruise src --config .dependency-cruiser.cjs",
-    "test": "jest --passWithNoTests --config jest.config.cjs",
-    "test:watch": "jest --watchAll --config jest.config.cjs"
+    "test": "cd test && npm test",
+    "test:watch": "cd test && npm run test:watch"
   },
   "dependencies": {
     "react": "^18.3.1",
