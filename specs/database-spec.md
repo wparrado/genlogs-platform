@@ -83,8 +83,7 @@ A rule with both city IDs set is a **specific route override** for that exact ci
 | `origin_city_id` | `UUID` | FK → `city_reference.id`, NULLABLE | Origin city; NULL means generic default |
 | `destination_city_id` | `UUID` | FK → `city_reference.id`, NULLABLE | Destination city; NULL means generic default |
 | `carrier_id` | `UUID` | FK → `carriers.id`, NOT NULL | The carrier this rule applies to |
-| `rank` | `SMALLINT` | NOT NULL, CHECK ≥ 1 | Display rank position (1 = highest) |
-| `daily_trucks` | `SMALLINT` | NOT NULL, CHECK ≥ 0 | Trucks per day on this route for this carrier |
+| `daily_trucks` | `SMALLINT` | NOT NULL, CHECK ≥ 0 | Trucks per day — results are ordered by this value descending (FR-008) |
 | `created_at` | `TIMESTAMPTZ` | NOT NULL, DEFAULT `NOW()` | Record creation time |
 
 **Unique constraint:** `(origin_city_id, destination_city_id, carrier_id)` — one rule per carrier per route.
@@ -96,26 +95,26 @@ A rule with both city IDs set is a **specific route override** for that exact ci
 
 *New York, NY → Washington, DC:*
 
-| `origin` | `destination` | `carrier` | `rank` | `daily_trucks` |
-|---|---|---|---|---|
-| New York, NY | Washington, DC | Knight-Swift Transport Services | 1 | 10 |
-| New York, NY | Washington, DC | J.B. Hunt Transport Services Inc | 2 | 7 |
-| New York, NY | Washington, DC | YRC Worldwide | 3 | 5 |
+| `origin` | `destination` | `carrier` | `daily_trucks` |
+|---|---|---|---|
+| New York, NY | Washington, DC | Knight-Swift Transport Services | 10 |
+| New York, NY | Washington, DC | J.B. Hunt Transport Services Inc | 7 |
+| New York, NY | Washington, DC | YRC Worldwide | 5 |
 
 *San Francisco, CA → Los Angeles, CA:*
 
-| `origin` | `destination` | `carrier` | `rank` | `daily_trucks` |
-|---|---|---|---|---|
-| San Francisco, CA | Los Angeles, CA | XPO Logistics | 1 | 9 |
-| San Francisco, CA | Los Angeles, CA | Schneider | 2 | 6 |
-| San Francisco, CA | Los Angeles, CA | Landstar Systems | 3 | 2 |
+| `origin` | `destination` | `carrier` | `daily_trucks` |
+|---|---|---|---|
+| San Francisco, CA | Los Angeles, CA | XPO Logistics | 9 |
+| San Francisco, CA | Los Angeles, CA | Schneider | 6 |
+| San Francisco, CA | Los Angeles, CA | Landstar Systems | 2 |
 
 *Generic default (any other pair):*
 
-| `origin` | `destination` | `carrier` | `rank` | `daily_trucks` |
-|---|---|---|---|---|
-| NULL | NULL | UPS Inc. | 1 | 11 |
-| NULL | NULL | FedEx Corp | 2 | 9 |
+| `origin` | `destination` | `carrier` | `daily_trucks` |
+|---|---|---|---|
+| NULL | NULL | UPS Inc. | 11 |
+| NULL | NULL | FedEx Corp | 9 |
 
 ---
 
@@ -124,22 +123,22 @@ A rule with both city IDs set is a **specific route override** for that exact ci
 ### Carrier lookup for a route
 ```sql
 -- 1. Try specific rule for the given city pair
-SELECT c.name, r.rank, r.daily_trucks
+SELECT c.name, r.daily_trucks
 FROM carrier_route_rules r
 JOIN carriers c ON c.id = r.carrier_id
 WHERE r.origin_city_id = :origin_id
   AND r.destination_city_id = :destination_id
   AND c.is_active = TRUE
-ORDER BY r.rank;
+ORDER BY r.daily_trucks DESC;
 
 -- 2. If no rows returned, fall back to generic default
-SELECT c.name, r.rank, r.daily_trucks
+SELECT c.name, r.daily_trucks
 FROM carrier_route_rules r
 JOIN carriers c ON c.id = r.carrier_id
 WHERE r.origin_city_id IS NULL
   AND r.destination_city_id IS NULL
   AND c.is_active = TRUE
-ORDER BY r.rank;
+ORDER BY r.daily_trucks DESC;
 ```
 
 ### City autocomplete fallback
