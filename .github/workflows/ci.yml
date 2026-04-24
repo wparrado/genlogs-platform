@@ -1,0 +1,62 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  backend:
+    name: Backend validation
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v4
+        with:
+          version: "latest"
+
+      - name: Set up Python 3.12
+        run: uv python install 3.12
+
+      - name: Install dependencies
+        run: uv sync --extra dev
+
+      - name: Run architecture tests
+        run: uv run pytest ../tests/backend -v
+
+      - name: Run pylint
+        run: |
+          score=$(uv run pylint app --output-format=text 2>&1 | grep "Your code has been rated" | grep -oP '[0-9]+\.[0-9]+(?=/10)')
+          echo "pylint score: $score"
+          uv run python -c "import sys; score=float('$score'); sys.exit(0 if score >= 10.0 else 1)"
+
+  frontend:
+    name: Frontend validation
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install Node.js dependencies
+        run: npm ci
+
+      - name: Architecture validation
+        run: npm run arch:validate
+
+      - name: TypeScript build check
+        run: npm run build

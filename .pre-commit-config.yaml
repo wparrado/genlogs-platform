@@ -1,0 +1,23 @@
+repos:
+  - repo: local
+    hooks:
+      - id: backend-architecture-tests
+        name: Backend architecture tests (Archon)
+        language: system
+        entry: bash -c 'cd backend && uv sync --extra dev -q && uv run pytest ../tests/backend -v'
+        pass_filenames: false
+        always_run: true
+
+      - id: frontend-architecture-validation
+        name: Frontend architecture validation (dependency-cruiser)
+        language: system
+        entry: bash -c 'cd frontend && npm run arch:validate'
+        pass_filenames: false
+        always_run: true
+
+      - id: backend-pylint
+        name: Backend pylint quality gate (10.00/10)
+        language: system
+        entry: bash -c 'cd backend && score=$(uv run pylint app --output-format=text 2>&1 | grep "Your code has been rated" | grep -oP "[0-9]+\.[0-9]+(?=/10)") && echo "pylint score: $score" && uv run python -c "import sys; score=float(\"$score\"); sys.exit(0 if score >= 10.0 else 1)"'
+        pass_filenames: false
+        always_run: true
