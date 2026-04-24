@@ -1,8 +1,8 @@
 import React from 'react'
 import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import App from '../src/App'
-import * as api from '../src/services/apiClient'
+import App from 'src/App'
+import * as api from 'src/services/apiClient'
 
 describe('Search error handling (TDD - failing)', () => {
   beforeEach(() => {
