@@ -1,4 +1,4 @@
-import { post } from '../../frontend/src/services/apiClient'
+import { post } from '../../../services/apiClient'
 
 describe('Error handling (scaffold)', () => {
   beforeEach(() => {

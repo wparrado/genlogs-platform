@@ -1,8 +1,8 @@
 import React from 'react'
 import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import SearchForm from '../../frontend/src/features/search/SearchForm'
-import * as api from '../../frontend/src/services/apiClient'
+import SearchForm from '../../../features/search/SearchForm'
+import * as api from '../../../services/apiClient'
 
 describe('SearchForm suggestions (TDD - failing)', () => {
   beforeEach(() => {

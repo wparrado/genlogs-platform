@@ -1,6 +1,6 @@
 import React from 'react'
 import { render, screen } from '@testing-library/react'
-import App from '../../frontend/src/App'
+import App from '../../../App'
 
 describe('SearchForm (scaffold)', () => {
   test('renders main shell and search sections', () => {
