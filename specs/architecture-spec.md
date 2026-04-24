@@ -185,7 +185,7 @@ C4Container
 
     Container(spa, "React SPA", "React 18 · Vite · TypeScript", "Single-page freight search interface running in the browser. Collects user input, renders route and carrier results.")
     Container(api, "FastAPI Backend", "Python 3.12 · FastAPI · Uvicorn · uv", "REST API. Validates requests, orchestrates carrier ranking logic, and delegates provider calls.")
-    ContainerDb(db, "PostgreSQL", "PostgreSQL 15", "city_reference (autocomplete fallback), carriers (master data), carrier_route_rules (ranking rules per city pair).")
+    ContainerDb(db, "PostgreSQL", "PostgreSQL 15", "city_reference (autocomplete fallback), carriers (master data), carrier_routes (ranking rules per city pair).")
     System_Ext(googlemaps, "Google Maps API", "City autocomplete suggestions and route distance/duration data")
 
     Rel(user, spa, "Uses", "HTTPS")
@@ -211,7 +211,7 @@ C4Component
     }
 
     System_Ext(googlemaps, "Google Maps API", "City suggestions and route data")
-    ContainerDb_Ext(db, "PostgreSQL", "city_reference, carriers, carrier_route_rules")
+    ContainerDb_Ext(db, "PostgreSQL", "city_reference, carriers, carrier_routes")
 
     Rel(routes, services, "Delegates business logic to")
     Rel(routes, models, "Validates and serializes with")

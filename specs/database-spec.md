@@ -69,7 +69,7 @@ Stores the carrier entities referenced in carrier ranking results.
 
 ---
 
-### 3. `carrier_route_rules`
+### 3. `carrier_routes`
 Encodes the carrier ranking business rules from FR-009 and FR-010.
 
 A rule with `origin_city_id IS NULL AND destination_city_id IS NULL` is the **generic default rule**
@@ -88,8 +88,10 @@ A rule with both city IDs set is a **specific route override** for that exact ci
 
 **Unique constraint:** `(origin_city_id, destination_city_id, carrier_id)` — one rule per carrier per route.
 
+**Check constraint:** `CHECK ((origin_city_id IS NULL) = (destination_city_id IS NULL))` — ambas ciudades deben estar presentes juntas, o ambas NULL (regla genérica). Un estado mixto es inválido.
+
 **Indexes:**
-- `idx_carrier_route_rules_cities` on `(origin_city_id, destination_city_id)` — used in every route search query.
+- `idx_carrier_routes_cities` on `(origin_city_id, destination_city_id)` — used in every route search query.
 
 **Seed data required (from FR-009 and FR-010):**
 
@@ -124,7 +126,7 @@ A rule with both city IDs set is a **specific route override** for that exact ci
 ```sql
 -- 1. Try specific rule for the given city pair
 SELECT c.name, r.daily_trucks
-FROM carrier_route_rules r
+FROM carrier_routes r
 JOIN carriers c ON c.id = r.carrier_id
 WHERE r.origin_city_id = :origin_id
   AND r.destination_city_id = :destination_id
@@ -133,7 +135,7 @@ ORDER BY r.daily_trucks DESC;
 
 -- 2. If no rows returned, fall back to generic default
 SELECT c.name, r.daily_trucks
-FROM carrier_route_rules r
+FROM carrier_routes r
 JOIN carriers c ON c.id = r.carrier_id
 WHERE r.origin_city_id IS NULL
   AND r.destination_city_id IS NULL
@@ -154,13 +156,13 @@ LIMIT 10;
 
 ## Relationship summary
 ```
-city_reference ←── carrier_route_rules ───→ city_reference
+city_reference ←── carrier_routes ───→ city_reference
                          │
                          └──────────────────→ carriers
 ```
 
-- One `city_reference` row can appear as origin or destination in many `carrier_route_rules`.
-- One `carriers` row can appear in many `carrier_route_rules` (across multiple routes).
+- One `city_reference` row can appear as origin or destination in many `carrier_routes`.
+- One `carriers` row can appear in many `carrier_routes` (across multiple routes).
 - The generic default rule has no city reference FK (both are NULL).
 
 ---
