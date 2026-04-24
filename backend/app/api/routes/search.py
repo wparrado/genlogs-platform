@@ -53,47 +53,11 @@ async def search(request: Request) -> JSONResponse:
     if from_city.id == to_city.id:
         return JSONResponse(status_code=400, content={"code": "invalid_request", "message": "Origin and destination must differ"})
 
-    # Lookup carriers from DB following fallback rules
-    carriers_list: List[dict] = []
-    routes_list: List[dict] = []
-    with Session(engine) as session:
-        origin = session.exec(select(CityReference).where(CityReference.place_id == from_city.id)).first()
-        destination = session.exec(select(CityReference).where(CityReference.place_id == to_city.id)).first()
+    # Delegate carrier lookup and route generation to service layer
+    from app.services.search_service import get_carriers_for_pair, get_routes_for_pair
 
-        rows = []
-        if origin and destination:
-            q = select(Carrier.name, CarrierRoute.daily_trucks).join(Carrier, Carrier.id == CarrierRoute.carrier_id).where(
-                CarrierRoute.origin_city_id == origin.id,
-                CarrierRoute.destination_city_id == destination.id,
-            ).order_by(CarrierRoute.daily_trucks.desc())
-            rows = session.exec(q).all()
-
-        if not rows:
-            q = select(Carrier.name, CarrierRoute.daily_trucks).join(Carrier, Carrier.id == CarrierRoute.carrier_id).where(
-                CarrierRoute.origin_city_id == None,
-                CarrierRoute.destination_city_id == None,
-            ).order_by(CarrierRoute.daily_trucks.desc())
-            rows = session.exec(q).all()
-
-        for name, daily in rows:
-            carriers_list.append({"name": name, "trucksPerDay": int(daily)})
-
-        # Build simple route options based on canonical normalized labels
-        if origin and destination:
-            o_lbl = (origin.normalized_label or "").lower()
-            d_lbl = (destination.normalized_label or "").lower()
-            if o_lbl == "new york, ny, us" and d_lbl == "washington, dc, us":
-                routes_list = [
-                    {"id": "route_ny_was_1", "summary": "I-95 S", "durationText": "3 hr 52 min", "distanceText": "227 mi", "mapEmbedUrl": None, "pathPayload": None},
-                    {"id": "route_ny_was_2", "summary": "I-295 E", "durationText": "4 hr 10 min", "distanceText": "245 mi", "mapEmbedUrl": None, "pathPayload": None},
-                    {"id": "route_ny_was_3", "summary": "US-1 S", "durationText": "5 hr 05 min", "distanceText": "260 mi", "mapEmbedUrl": None, "pathPayload": None},
-                ]
-            elif o_lbl == "san francisco, ca, us" and d_lbl == "los angeles, ca, us":
-                routes_list = [
-                    {"id": "route_sf_la_1", "summary": "I-5 S", "durationText": "6 hr 30 min", "distanceText": "382 mi", "mapEmbedUrl": None, "pathPayload": None},
-                    {"id": "route_sf_la_2", "summary": "US-101 S", "durationText": "7 hr 15 min", "distanceText": "420 mi", "mapEmbedUrl": None, "pathPayload": None},
-                    {"id": "route_sf_la_3", "summary": "CA-1 S (scenic)", "durationText": "9 hr 00 min", "distanceText": "430 mi", "mapEmbedUrl": None, "pathPayload": None},
-                ]
+    carriers_list = get_carriers_for_pair(from_city.id, to_city.id)
+    routes_list = get_routes_for_pair(from_city.id, to_city.id)
 
     response = {
         "from": {"id": from_city.id, "label": from_city.label, "city": from_city.city, "state": from_city.state, "country": from_city.country},
