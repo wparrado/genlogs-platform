@@ -23,8 +23,8 @@ Mermaid (optional) - Architecture
 
 ```mermaid
 flowchart LR
-  A[User browser] -->|HTTP| F[Frontend (Vite + React)]
-  F -->|API /api/*| B[Backend (FastAPI)]
+  U[User browser] -->|HTTP| F[Frontend]
+  F -->|API| B[Backend]
   B -->|SQL| D[Postgres DB]
   B -->|HTTP| E[External Map Provider]
 ```
