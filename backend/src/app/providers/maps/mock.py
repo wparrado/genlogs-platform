@@ -39,9 +39,9 @@ def _routes_for_labels(o_lbl: str, d_lbl: str) -> List[Dict]:
 
     if o_lbl == "new york, ny, us" and d_lbl == "washington, dc, us":
         routes = [
-            {"id": "route_ny_was_1", "summary": "I-95 S", "durationText": "3 hr 52 min", "distanceText": "227 mi", "mapEmbedUrl": None, "pathPayload": None},
-            {"id": "route_ny_was_2", "summary": "I-295 E", "durationText": "4 hr 10 min", "distanceText": "245 mi", "mapEmbedUrl": None, "pathPayload": None},
-            {"id": "route_ny_was_3", "summary": "US-1 S", "durationText": "5 hr 05 min", "distanceText": "260 mi", "mapEmbedUrl": None, "pathPayload": None},
+            {"id": "route_ny_was_1", "summary": "I-95 S", "durationText": "3 hr 52 min", "distanceText": "227 mi", "mapEmbedUrl": None, "pathPayload": [[40.7128, -74.0060],[39.6, -75.5],[38.9072, -77.0369]]},
+            {"id": "route_ny_was_2", "summary": "I-295 E", "durationText": "4 hr 10 min", "distanceText": "245 mi", "mapEmbedUrl": None, "pathPayload": [[40.7128, -74.0060],[39.9, -76.2],[38.9072, -77.0369]]},
+            {"id": "route_ny_was_3", "summary": "US-1 S", "durationText": "5 hr 05 min", "distanceText": "260 mi", "mapEmbedUrl": None, "pathPayload": [[40.7128, -74.0060],[39.4, -75.0],[38.9072, -77.0369]]},
         ]
         # attach numeric duration for sorting
         for r in routes:
