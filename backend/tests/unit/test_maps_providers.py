@@ -36,13 +36,16 @@ def test_mock_provider_no_match(monkeypatch):
     assert routes == []
 
 
-def test_google_provider_raises_without_key():
+def test_google_provider_raises_without_key(monkeypatch):
     # Ensure circuit state doesn't leak from other tests
     try:
         google._circuit.failures = 0
         google._circuit.opened_at = None
     except Exception:
         pass
+
+    # Force no API key for deterministic behavior
+    monkeypatch.setattr(google.settings, "genlogs_google_api_key", "")
 
     with pytest.raises(RuntimeError):
         google.get_routes_for_pair("a", "b")

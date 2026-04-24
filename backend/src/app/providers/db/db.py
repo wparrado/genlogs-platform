@@ -134,9 +134,17 @@ def get_carriers_for_pair(from_place_id: str, to_place_id: str) -> List[Dict]:
     """Return carriers ordered by daily_trucks for a city pair.
 
     Tries a specific rule first; falls back to the generic rule when no specific
-    entries are defined. When DB has no seed data and mock place ids are used,
-    return deterministic mock carriers to keep functional tests lightweight.
+    entries are defined. When mock place ids are used, prefer deterministic mock
+    carriers to keep functional tests lightweight and independent of any local
+    DB state.
     """
+    # If both sides are explicit mock ids, prefer deterministic mapping and skip DB
+    if from_place_id and to_place_id and from_place_id.startswith("mock:") and to_place_id.startswith("mock:"):
+        key = (from_place_id, to_place_id)
+        if key in _MOCK_CARRIER_MAP:
+            return _MOCK_CARRIER_MAP[key]
+        return _MOCK_CARRIER_MAP["generic"]
+
     with Session(engine) as session:
         origin = session.exec(
             select(CityReference).where(CityReference.place_id == from_place_id)
@@ -176,14 +184,7 @@ def get_carriers_for_pair(from_place_id: str, to_place_id: str) -> List[Dict]:
         metrics_inc("db_get_carriers")
         return [{"name": name, "trucksPerDay": int(daily)} for name, daily in rows]
 
-    # If still no rows and mock ids used, return deterministic mock carriers
-    if (from_place_id and to_place_id) and (from_place_id.startswith("mock:") or to_place_id.startswith("mock:")):
-        key = (from_place_id, to_place_id)
-        if key in _MOCK_CARRIER_MAP:
-            return _MOCK_CARRIER_MAP[key]
-        return _MOCK_CARRIER_MAP["generic"]
-
-    # Default: empty list
+    # If still no rows, default to empty list
     from app.metrics import inc as metrics_inc
     metrics_inc("db_get_carriers")
     return []
