@@ -302,10 +302,9 @@ genlogs_platform/
       features/search/
       components/
       services/
-  tests/
-    backend/
-    frontend/
-    functional/
+  backend/tests/
+  frontend/src/**/__tests__/
+  functional/
 ```
 
 ## Backend toolchain
