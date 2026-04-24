@@ -112,7 +112,7 @@ function App(): React.ReactElement {
           {error ? (
             <div className="error">
               <div>{error}</div>
-              <button onClick={() => { if (lastQuery) void handleSearch(lastQuery.from, lastQuery.to) }} className="btn">Reintentar</button>
+              <button onClick={() => { if (lastQuery) void handleSearch(lastQuery.from, lastQuery.to) }} className="btn">Retry</button>
             </div>
           ) : null}
         </section>
