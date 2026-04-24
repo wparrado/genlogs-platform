@@ -4,7 +4,7 @@ repos:
       - id: backend-architecture-tests
         name: Backend architecture tests (Archon)
         language: system
-        entry: bash -c 'cd backend && uv sync --extra dev -q && uv run pytest ../tests/backend -v'
+        entry: bash -c 'cd backend && uv sync --extra dev -q && uv run pytest tests -v'
         pass_filenames: false
         always_run: true
 
