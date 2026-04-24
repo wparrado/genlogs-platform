@@ -11,6 +11,7 @@ module.exports = {
       isolatedModules: true
     }
   },
+  moduleFileExtensions: ['ts','tsx','js','jsx','json','node'],
   moduleNameMapper: {
     '^src/(.*)$': '<rootDir>/../src/$1',
     '\\.(css|less|scss|sass)$': '<rootDir>/src/__mocks__/styleMock.js'
