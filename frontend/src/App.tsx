@@ -87,7 +87,14 @@ function App(): React.ReactElement {
           </div>
         </section>
 
-        <section className="container carriers">
+        <section aria-label="route results" className="container routes">
+          <h4>Rutas</h4>
+          <ul>
+            {routes.length > 0 ? routes.map((r) => <li key={r.id}>{r.summary || r.label || r.id}</li>) : <li className="muted">Introduce origen y destino para ver opciones</li>}
+          </ul>
+        </section>
+
+        <section aria-label="carrier results" className="container carriers">
           <h4>Transportistas</h4>
           <div className="chips">
             {carriers.length > 0 ? carriers.map((c) => <span key={c} className="chip">{c}</span>) : <span className="muted">No hay transportistas disponibles</span>}
