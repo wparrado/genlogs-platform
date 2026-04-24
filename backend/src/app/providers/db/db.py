@@ -138,8 +138,9 @@ def get_carriers_for_pair(from_place_id: str, to_place_id: str) -> List[Dict]:
     carriers to keep functional tests lightweight and independent of any local
     DB state.
     """
-    # If both sides are explicit mock ids, prefer deterministic mapping and skip DB
-    if from_place_id and to_place_id and from_place_id.startswith("mock:") and to_place_id.startswith("mock:"):
+    # If both sides are explicit mock ids and tests opt-in, prefer deterministic mapping
+    # and skip DB. Production behavior uses DB and primary provider first.
+    if getattr(settings, 'genlogs_prefer_mock_for_mock_ids', False) and from_place_id and to_place_id and from_place_id.startswith("mock:") and to_place_id.startswith("mock:"):
         key = (from_place_id, to_place_id)
         if key in _MOCK_CARRIER_MAP:
             return _MOCK_CARRIER_MAP[key]

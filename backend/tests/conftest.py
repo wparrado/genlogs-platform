@@ -35,6 +35,9 @@ if os.path.exists(ENV_PATH):
 
 # By default, skip long-running external E2E tests unless RUN_E2E=1 is set in the environment.
 RUN_E2E = os.environ.get("RUN_E2E")
+# Tests opt-in to preferring the mock provider for mock:* ids to keep behavior deterministic
+# and independent from network/DB state. This env var is only set during test runs.
+os.environ.setdefault('GENLOGS_PREFER_MOCK_FOR_MOCK_IDS', os.environ.get('GENLOGS_PREFER_MOCK_FOR_MOCK_IDS', '1'))
 
 def pytest_collection_modifyitems(config, items):
     if RUN_E2E:

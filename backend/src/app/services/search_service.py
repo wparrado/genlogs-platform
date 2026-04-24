@@ -31,9 +31,10 @@ def get_routes_for_pair(from_place_id: str, to_place_id: str) -> List[Dict]:
     Try the Google provider first; if it raises or is unavailable, fall back to
     the local mock provider which derives deterministic routes from the DB.
     """
-    # For deterministic behavior in tests, prefer the mock provider when
-    # both place ids are explicit mock identifiers.
-    if from_place_id and to_place_id and from_place_id.startswith("mock:") and to_place_id.startswith("mock:"):
+    # In production flow: prefer primary (google) and only fall back to mock
+    # if the primary provider raises or is unavailable. Tests can opt-in to
+    # prefer the mock provider by setting the configuration flag.
+    if getattr(settings, 'genlogs_prefer_mock_for_mock_ids', False) and from_place_id and to_place_id and from_place_id.startswith("mock:") and to_place_id.startswith("mock:"):
         routes = mock.get_routes_for_pair(from_place_id, to_place_id)
     else:
         primary = (settings.genlogs_maps_provider or "mock").lower()
