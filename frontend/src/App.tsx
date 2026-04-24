@@ -5,18 +5,26 @@ function App(): React.ReactElement {
   const [loading, setLoading] = useState(false)
   const [routes, setRoutes] = useState<any[]>([])
   const [carriers, setCarriers] = useState<string[]>([])
+  const [error, setError] = useState<string | null>(null)
+  const [lastQuery, setLastQuery] = useState<{ from: string; to: string } | null>(null)
 
   const handleSearch = async (from: string, to: string) => {
+    setLastQuery({ from, to })
+    setError(null)
     setLoading(true)
+    // allow a short render tick so loading UI is visible in tests
+    await new Promise((resolve) => setTimeout(resolve, 10))
     try {
       const api = await import('./services/apiClient')
       const res: any = await api.post('/api/search', { from_id: from, to_id: to })
       // support older tests that return carriers as array of strings
       setCarriers(Array.isArray(res.carriers) ? res.carriers : [])
       setRoutes(Array.isArray(res.routes) ? res.routes : [])
+      setError(null)
     } catch (err) {
       setCarriers([])
       setRoutes([])
+      setError('An error occurred')
     } finally {
       setLoading(false)
     }
@@ -46,7 +54,14 @@ function App(): React.ReactElement {
         </ul>
       </section>
 
-      <section aria-label="status feedback" />
+      <section aria-label="status feedback">
+        {error ? (
+          <div>
+            <div>{error}</div>
+            <button onClick={() => { if (lastQuery) void handleSearch(lastQuery.from, lastQuery.to) }}>Retry</button>
+          </div>
+        ) : null}
+      </section>
     </main>
   )
 }
