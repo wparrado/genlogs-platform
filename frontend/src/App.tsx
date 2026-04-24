@@ -41,7 +41,7 @@ function App(): React.ReactElement {
     <div className="site">
       <header className="site-header">
         <div className="container header-inner">
-          <div className="brand">GenLogs</div>
+          <h1 className="brand">GenLogs</h1>
           <nav className="nav">
             <a href="#" className="nav-link">Features</a>
             <a href="#" className="nav-link">Docs</a>
@@ -57,7 +57,9 @@ function App(): React.ReactElement {
               <h1 className="hero-title">Logística clara y eficiente para tus rutas</h1>
               <p className="hero-sub">Compara rutas, transportistas y tiempos en segundos. Visualiza y optimiza tus envíos con la potencia de GenLogs.</p>
               <div className="hero-cta">
-                <SearchForm onSearch={handleSearch} />
+                <section aria-label="search form">
+                  <SearchForm onSearch={handleSearch} />
+                </section>
               </div>
             </div>
             <div className="hero-visual" aria-hidden="true">
