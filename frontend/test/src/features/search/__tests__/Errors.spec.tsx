@@ -1,4 +1,4 @@
-import { post } from 'src/services/apiClient'
+import { post } from '../src/services/apiClient'
 
 describe('Error handling (scaffold)', () => {
   beforeEach(() => {

@@ -1,9 +1,9 @@
 import React from 'react'
 import { render, screen, fireEvent, waitFor } from '@testing-library/react'
 import '@testing-library/jest-dom'
-import { SearchForm } from 'src/features/search'
+import { SearchForm } from '../src/features/search'
 
-jest.mock('src/services/apiClient', () => ({ get: jest.fn(() => Promise.resolve({ items: [] })) }))
+jest.mock('../src/services/apiClient', () => ({ get: jest.fn(() => Promise.resolve({ items: [] })) }))
 
 test('calls onSearch with values on submit', async () => {
   const onSearch = jest.fn(() => Promise.resolve())
