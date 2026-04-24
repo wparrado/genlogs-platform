@@ -36,9 +36,38 @@ Data model (high level)
 - Carrier: id, name
 - RouteCarrier: route_id, carrier_id, price, transit_time
 
-ASCII data diagram
+Mermaid ER diagram
 
-[City] 1---* [Route] *---* [Carrier]
+```mermaid
+erDiagram
+  CITY {
+    int id PK
+    string name
+    string place_id
+  }
+  ROUTE {
+    int id PK
+    int origin_id FK
+    int destination_id FK
+    string summary
+    float distance
+    float duration
+  }
+  CARRIER {
+    int id PK
+    string name
+  }
+  ROUTE_CARRIER {
+    int route_id FK
+    int carrier_id FK
+    float price
+    float transit_time
+  }
+
+  CITY ||--o{ ROUTE : has
+  ROUTE ||--o{ ROUTE_CARRIER : offers
+  CARRIER ||--o{ ROUTE_CARRIER : provides
+```
 
 Local development
 
@@ -46,7 +75,7 @@ Prerequisites
 
 - Node.js (recommended LTS)
 - npm or yarn
-- Python 3.12+ and virtualenv (project contains a .venv)
+- Python 3.12+ (managed by the project's uv helper)
 - Postgres (for full local backend; some endpoints may run with mock providers)
 
 Frontend (run)
@@ -63,13 +92,18 @@ Notes
 
 Backend (run)
 
+For development the project's uv helper is recommended. A minimal developer flow is:
+
 1. cd backend
-2. python -m venv .venv
-3. .venv/bin/pip install -r requirements.txt OR use the provided pyproject (pip install -e .[dev])
-4. Start the app using `uv` (preferred):
+2. Synchronize the project environment (this will create/manage the virtualenv if needed):
+   uv sync
+3. Start the app using uv:
    uv run uvicorn app.main:app --host 127.0.0.1 --port 8000 --reload
-   (Alternative: .venv/bin/python -m uvicorn app.main:app --host 127.0.0.1 --port 8000 --reload)
-5. Health endpoint: http://127.0.0.1:8000/health
+4. Health endpoint: http://127.0.0.1:8000/health
+
+Notes:
+- `uv sync` will prepare the virtualenv and install dependencies as configured for the project. Using the helper ensures a reproducible developer experience across machines.
+- For edge cases you can still run the venv directly, but prefer the uv helper for consistency.
 
 CORS and dev notes
 
@@ -86,7 +120,7 @@ Database & seed
 Testing
 
 - Frontend unit tests: `cd frontend && npm test`
-- Backend tests: run pytest in the backend package (uses the project's .venv)
+- Backend tests: run pytest in the backend package (uses the project's uv helper)
 
 Contributing / Notes
 
