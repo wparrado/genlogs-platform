@@ -66,7 +66,9 @@ Backend (run)
 1. cd backend
 2. python -m venv .venv
 3. .venv/bin/pip install -r requirements.txt OR use the provided pyproject (pip install -e .[dev])
-4. .venv/bin/python -m uvicorn app.main:app --host 127.0.0.1 --port 8000 --reload
+4. Start the app using `uv` (preferred):
+   uv run uvicorn app.main:app --host 127.0.0.1 --port 8000 --reload
+   (Alternative: .venv/bin/python -m uvicorn app.main:app --host 127.0.0.1 --port 8000 --reload)
 5. Health endpoint: http://127.0.0.1:8000/health
 
 CORS and dev notes
