@@ -1,7 +1,7 @@
 import React from 'react'
 import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import SearchForm from 'src/features/search/SearchForm'
+import SearchForm from '../../../../../src/features/search/SearchForm'
 
 describe('SearchForm validation (TDD - failing)', () => {
   test('shows validation errors when fields are missing', async () => {
