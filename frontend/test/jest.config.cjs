@@ -12,6 +12,7 @@ module.exports = {
     }
   },
   moduleNameMapper: {
+    '^src/(.*)$': '<rootDir>/../src/$1',
     '\\.(css|less|scss|sass)$': '<rootDir>/src/__mocks__/styleMock.js'
   }
 }
