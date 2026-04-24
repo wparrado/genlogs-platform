@@ -1,0 +1,8 @@
+{
+  "name": "genlogs-frontend-tests",
+  "private": true,
+  "scripts": {
+    "test": "node ../node_modules/jest/bin/jest.js --passWithNoTests --config jest.config.cjs",
+    "test:watch": "node ../node_modules/jest/bin/jest.js --watchAll --config jest.config.cjs"
+  }
+}
