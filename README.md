@@ -29,44 +29,64 @@ flowchart LR
   B -->|HTTP| E[External Map Provider]
 ```
 
-Data model (high level)
+Database models (actual)
 
-- City: id, name, place_id
-- Route: id, origin_id, destination_id, summary, distance, duration
-- Carrier: id, name
-- RouteCarrier: route_id, carrier_id, price, transit_time
+The backend uses SQLModel (SQLAlchemy) models defined in app/providers/db/models. Key tables used by the MVP are:
 
-Mermaid ER diagram
+- CityReference (table: city_reference)
+  - id: UUID (PK)
+  - place_id: string (unique, nullable)
+  - name: string
+  - state: string
+  - country: string (default 'US')
+  - normalized_label: string (indexed)
+  - created_at: datetime
+
+- Carrier (table: carriers)
+  - id: UUID (PK)
+  - name: string (unique)
+  - is_active: bool
+  - created_at: datetime
+
+- CarrierRoute (table: carrier_routes)
+  - id: UUID (PK)
+  - origin_city_id: UUID FK -> city_reference.id (nullable)
+  - destination_city_id: UUID FK -> city_reference.id (nullable)
+  - carrier_id: UUID FK -> carriers.id
+  - daily_trucks: int (SmallInteger)
+  - created_at: datetime
+  - Constraints: unique(origin_city_id, destination_city_id, carrier_id) and a check that origin/destination are both null or both not null
+
+Mermaid ER diagram (reflects actual backend models)
 
 ```mermaid
 erDiagram
-  CITY {
-    int id PK
-    string name
+  CITY_REFERENCE {
+    uuid id PK
     string place_id
-  }
-  ROUTE {
-    int id PK
-    int origin_id FK
-    int destination_id FK
-    string summary
-    float distance
-    float duration
+    string name
+    string state
+    string country
+    string normalized_label
+    datetime created_at
   }
   CARRIER {
-    int id PK
+    uuid id PK
     string name
+    boolean is_active
+    datetime created_at
   }
-  ROUTE_CARRIER {
-    int route_id FK
-    int carrier_id FK
-    float price
-    float transit_time
+  CARRIER_ROUTE {
+    uuid id PK
+    uuid origin_city_id FK
+    uuid destination_city_id FK
+    uuid carrier_id FK
+    int daily_trucks
+    datetime created_at
   }
 
-  CITY ||--o{ ROUTE : has
-  ROUTE ||--o{ ROUTE_CARRIER : offers
-  CARRIER ||--o{ ROUTE_CARRIER : provides
+  CITY_REFERENCE ||--o{ CARRIER_ROUTE : "origin/destination"
+  CARRIER ||--o{ CARRIER_ROUTE : provides
 ```
 
 Local development
