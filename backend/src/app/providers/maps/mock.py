@@ -11,7 +11,12 @@ from app.providers import db as db_provider
 
 
 def _routes_for_labels(o_lbl: str, d_lbl: str) -> List[Dict]:
-    """Map normalized labels to deterministic route payloads."""
+    """Map normalized labels to deterministic route payloads.
+
+    Support canonical pairs in both directions (origin->dest and dest->origin)
+    by returning mirror routes when needed. This prevents empty results when
+    users search the opposite direction of preseeded examples.
+    """
     o_lbl = (o_lbl or "").lower()
     d_lbl = (d_lbl or "").lower()
     routes: List[Dict] = []
@@ -37,21 +42,46 @@ def _routes_for_labels(o_lbl: str, d_lbl: str) -> List[Dict]:
         except Exception:
             return None
 
+    # Predefined forward routes (origin -> destination)
     if o_lbl == "new york, ny, us" and d_lbl == "washington, dc, us":
         routes = [
             {"id": "route_ny_was_1", "summary": "I-95 S", "durationText": "3 hr 52 min", "distanceText": "227 mi", "mapEmbedUrl": None, "pathPayload": [[40.7128, -74.0060],[39.6, -75.5],[38.9072, -77.0369]]},
             {"id": "route_ny_was_2", "summary": "I-295 E", "durationText": "4 hr 10 min", "distanceText": "245 mi", "mapEmbedUrl": None, "pathPayload": [[40.7128, -74.0060],[39.9, -76.2],[38.9072, -77.0369]]},
             {"id": "route_ny_was_3", "summary": "US-1 S", "durationText": "5 hr 05 min", "distanceText": "260 mi", "mapEmbedUrl": None, "pathPayload": [[40.7128, -74.0060],[39.4, -75.0],[38.9072, -77.0369]]},
         ]
-        # attach numeric duration for sorting
-        for r in routes:
-            r['duration'] = _parse_duration_text(r.get('durationText'))
     elif o_lbl == "san francisco, ca, us" and d_lbl == "los angeles, ca, us":
         routes = [
             {"id": "route_sf_la_1", "summary": "I-5 S", "durationText": "6 hr 30 min", "distanceText": "382 mi", "mapEmbedUrl": None, "pathPayload": None},
             {"id": "route_sf_la_2", "summary": "US-101 S", "durationText": "7 hr 15 min", "distanceText": "420 mi", "mapEmbedUrl": None, "pathPayload": None},
             {"id": "route_sf_la_3", "summary": "CA-1 S (scenic)", "durationText": "9 hr 00 min", "distanceText": "430 mi", "mapEmbedUrl": None, "pathPayload": None},
         ]
+
+    # If no predefined forward routes found, check the reverse pair and mirror if present
+    if not routes:
+        # Try reversed pair
+        reversed_routes = []
+        if d_lbl == "new york, ny, us" and o_lbl == "washington, dc, us":
+            reversed_routes = _routes_for_labels("new york, ny, us", "washington, dc, us")
+        elif d_lbl == "san francisco, ca, us" and o_lbl == "los angeles, ca, us":
+            reversed_routes = _routes_for_labels("san francisco, ca, us", "los angeles, ca, us")
+
+        if reversed_routes:
+            # Mirror reversed routes: adjust ids and reverse pathPayload if present
+            for r in reversed_routes:
+                new_r = dict(r)
+                new_r['id'] = f"rev_{r.get('id')}"
+                # Reverse path coordinates for proper origin->dest ordering
+                if new_r.get('pathPayload') and isinstance(new_r['pathPayload'], list):
+                    try:
+                        new_r['pathPayload'] = list(reversed(new_r['pathPayload']))
+                    except Exception:
+                        pass
+                routes.append(new_r)
+
+    # Attach numeric duration for sorting when available
+    for r in routes:
+        if r.get('duration') is None:
+            r['duration'] = _parse_duration_text(r.get('durationText'))
 
     return routes
 

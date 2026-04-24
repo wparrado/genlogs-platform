@@ -124,7 +124,19 @@ def get_routes_for_pair(from_place_id: str, to_place_id: str) -> List[Dict]:
     for attempt in range(3):
         try:
             metrics_inc("maps_google_attempts")
-            payload = _circuit.call(_call_google_directions, from_place_id, to_place_id, api_key)
+            # Google Directions accepts place_id:PLACE_ID to reference Google Place IDs.
+            def _normalize_place_param(p: Optional[str]) -> Optional[str]:
+                if not p:
+                    return p
+                if isinstance(p, str) and p.startswith("place_id:"):
+                    return p
+                # Common Google Place IDs begin with 'ChI' — prefix these so Directions treats them as place IDs
+                if isinstance(p, str) and p.startswith("ChI"):
+                    return f"place_id:{p}"
+                return p
+            origin_param = _normalize_place_param(from_place_id)
+            destination_param = _normalize_place_param(to_place_id)
+            payload = _circuit.call(_call_google_directions, origin_param, destination_param, api_key)
             routes = []
             for idx, leg in enumerate(payload.get("routes", [])[:3]):
                 # Derive a compact representation similar to mocks

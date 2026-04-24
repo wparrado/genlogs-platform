@@ -1,4 +1,4 @@
-import React, { useState } from 'react'
+import React, { useState, useEffect, Suspense } from 'react'
 import SearchForm from './features/search/SearchForm'
 import * as api from './services/apiClient'
 import Button from './components/Button'
@@ -8,12 +8,18 @@ import Loading from './components/Loading'
 // When under tests, provide a noop stub so App can render during unit tests without loading Leaflet.
 let Map: any = () => null
 if (!(typeof process !== 'undefined' && (process as any).env && (process as any).env.JEST_WORKER_ID)) {
-  // runtime (dev/prod) — require the map component lazily
-  // eslint-disable-next-line @typescript-eslint/no-var-requires
-  Map = require('./components/Map').default
+  // runtime (dev/prod) — lazy-load the map component as an ESM dynamic import to work in browser
+  Map = React.lazy(() => import('./components/Map'))
 }
 
 function App(): React.ReactElement {
+  useEffect(() => {
+    // visible debug to help detect why UI might appear blank in browser
+    // logs show in DevTools Console and we also render a small overlay when in dev mode
+    // eslint-disable-next-line no-console
+    console.log('App mounted — DEV:', import.meta.env.DEV)
+  }, [])
+
   const [loading, setLoading] = useState(false)
   const [routes, setRoutes] = useState<any[]>([])
   const [carriers, setCarriers] = useState<string[]>([])
@@ -26,7 +32,7 @@ function App(): React.ReactElement {
     setLoading(true)
     await new Promise((resolve) => setTimeout(resolve, 10))
     try {
-      const res: any = await api.post('/api/search', { from_id: from, to_id: to })
+      const res: any = await api.get(`/api/search?from_id=${encodeURIComponent(from)}&to_id=${encodeURIComponent(to)}`)
       setCarriers(Array.isArray(res.carriers) ? res.carriers : [])
       setRoutes(Array.isArray(res.routes) ? res.routes : [])
       setError(null)
@@ -108,7 +114,9 @@ function App(): React.ReactElement {
 
         <section className="container map">
           <h4>Mapa</h4>
-          <Map routes={routes} />
+          <Suspense fallback={null}>
+            <Map routes={routes} />
+          </Suspense>
         </section>
 
         <section className="container status">
