@@ -1,5 +1,6 @@
 import React, { useState } from 'react'
 import SearchForm from './features/search/SearchForm'
+import * as api from './services/apiClient'
 
 // Avoid importing react-leaflet during Jest runs (it ships as ESM and breaks the transformer).
 // When under tests, provide a noop stub so App can render during unit tests without loading Leaflet.
@@ -23,7 +24,6 @@ function App(): React.ReactElement {
     setLoading(true)
     await new Promise((resolve) => setTimeout(resolve, 10))
     try {
-      const api = await import('./services/apiClient')
       const res: any = await api.post('/api/search', { from_id: from, to_id: to })
       setCarriers(Array.isArray(res.carriers) ? res.carriers : [])
       setRoutes(Array.isArray(res.routes) ? res.routes : [])
