@@ -9,7 +9,15 @@ PROJECT_NUMBER="347212169781"
 POOL="github-pool"
 PROVIDER="github-provider"
 SA_EMAIL="github-deployer@genlogs-494223.iam.gserviceaccount.com"
-MEMBER="principalSet://iam.googleapis.com/projects/${PROJECT_NUMBER}/locations/global/workloadIdentityPools/${POOL}/providers/${PROVIDER}"
+# Set REPO to 'owner/repo' to restrict the binding to a single GitHub repository.
+# Leave empty to fall back to provider-based binding.
+REPO="wparrado/genlogs-platform"
+# MEMBER selection: prefer attribute.repository when REPO is provided.
+if [ -n "${REPO}" ]; then
+  MEMBER="principalSet://iam.googleapis.com/projects/${PROJECT_NUMBER}/locations/global/workloadIdentityPools/${POOL}/attribute.repository/${REPO}"
+else
+  MEMBER="principalSet://iam.googleapis.com/projects/${PROJECT_NUMBER}/locations/global/workloadIdentityPools/${POOL}/providers/${PROVIDER}"
+fi
 ROLE="roles/iam.workloadIdentityUser"
 # ----------------
 
