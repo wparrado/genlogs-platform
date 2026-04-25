@@ -8,9 +8,12 @@ the HTTP route can serve the correct format.
 from collections import Counter
 import threading
 from typing import Optional
+import logging
 
 _lock = threading.Lock()
 _inmem = Counter()
+
+logger = logging.getLogger(__name__)
 
 # Try to use prometheus_client but tolerate absence
 try:
@@ -36,7 +39,7 @@ def inc(name: str, amount: int = 1) -> None:
         if PROM_AVAILABLE:
             if name not in _prom_counters:
                 # create a Prometheus counter in our private registry
-                _prom_counters[name] = PromCounter(name, f"counter {name}", registry=_registry)
+                _prom_counters[name] = PromCounter(name, f"counter {name}", registry=_REGISTRY)
             _prom_counters[name].inc(amount)
 
 
@@ -58,9 +61,9 @@ def reset() -> None:
             for counter in list(_prom_counters.values()):
                 try:
                     _REGISTRY.unregister(counter)
-                except Exception:
+                except Exception as exc:
                     # best-effort cleanup; ignore failures
-                    pass
+                    logger.debug("failed to unregister prometheus counter", exc_info=exc)
             _prom_counters.clear()
 
 
