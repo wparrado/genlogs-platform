@@ -75,15 +75,32 @@ jobs:
             exit 1
           fi
 
-          # Resolve immutable image digest
-          DIGEST="$(gcloud artifacts docker images list "$REPO_PATH" --project="${{ env.PROJECT_ID }}" --format='value(digest)' --sort-by='~createTime' --limit=1)"
-          if [ -z "$DIGEST" ]; then
+          # Resolve immutable image digest — prefer Cloud Build's output (contains digest), fallback to Artifact Registry
+          IMAGE_REF=""
+          if [ -n "$BUILD_ID" ]; then
+            IMAGES=$(gcloud builds describe "$BUILD_ID" --project="${{ env.PROJECT_ID }}" --format='get(results.images[*].name)') || true
+            for img in $IMAGES; do
+              if echo "$img" | grep -q "@"; then
+                IMAGE_REF="$img"
+                break
+              fi
+            done
+          fi
+
+          # Fallback: try Artifact Registry lookup
+          if [ -z "$IMAGE_REF" ]; then
+            DIGEST="$(gcloud artifacts docker images list "$REPO_PATH" --project="${{ env.PROJECT_ID }}" --format='value(digest)' --sort-by='~createTime' --limit=1)" || true
+            if [ -n "$DIGEST" ]; then
+              IMAGE_REF="$REPO_PATH@$DIGEST"
+            fi
+          fi
+
+          if [ -z "$IMAGE_REF" ]; then
             echo "Failed to resolve image digest for $REPO_PATH" >&2
             exit 1
           fi
-          IMAGE_REF="$REPO_PATH@$DIGEST"
           echo "IMAGE_REF=$IMAGE_REF" >> $GITHUB_ENV
-
+          echo "Resolved IMAGE_REF=$IMAGE_REF"
       - name: Get Cloud SQL connection name
         id: sql
         run: |
