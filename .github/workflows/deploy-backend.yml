@@ -67,6 +67,13 @@ jobs:
       - name: Configure docker for Artifact Registry
         run: gcloud auth configure-docker --quiet
 
+      - name: Docker login to Artifact Registry (explicit)
+        run: |
+          set -euo pipefail
+          REPO_HOST="${{ env.REGION }}-docker.pkg.dev"
+          echo "Logging into $REPO_HOST"
+          gcloud auth print-access-token | docker login -u oauth2accesstoken --password-stdin https://$REPO_HOST
+
       - name: Build and push image (docker build + push)
         working-directory: backend
         run: |
