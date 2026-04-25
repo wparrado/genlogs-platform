@@ -49,6 +49,16 @@ async def search(
             content={"code": "invalid_request", "message": "Origin and destination must differ"},
         )
 
+    # Basic format validation: IDs should look like either 'mock:...' or 'place_...'
+    def _valid_id_format(s: str) -> bool:
+        if not isinstance(s, str):
+            return False
+        s = s.strip()
+        return (":" in s) or s.startswith("place_")
+
+    if not _valid_id_format(from_id) or not _valid_id_format(to_id):
+        return JSONResponse(status_code=400, content={"code": "invalid_request", "message": "Malformed city id(s)"})
+
     # Resolve city metadata from DB when possible for richer response
     try:
         from_row = db_provider.get_city_by_place_id(from_id)

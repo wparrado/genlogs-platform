@@ -34,17 +34,19 @@ if os.path.exists(ENV_PATH):
         pass
 
 # By default, skip long-running external E2E tests unless RUN_E2E=1 is set in the environment.
-RUN_E2E = os.environ.get("RUN_E2E")
+# Normalize RUN_E2E and treat only the literal string '1' as enabling E2E behavior.
+RUN_E2E = os.environ.get("RUN_E2E", "").strip()
 
 # Make tests deterministic by preferring the local mock provider for mock:* ids
-# during normal unit/functional test runs. Integration/E2E tests (RUN_E2E=1)
+# during normal unit/functional test runs. Integration/E2E tests (RUN_E2E=="1")
 # will not enable this behavior.
 import app.config.settings as cfg
 import pytest
 
 @pytest.fixture(scope="session", autouse=True)
 def _prefer_mock_for_tests():
-    if not RUN_E2E:
+    # If RUN_E2E is not explicitly '1', enable mock provider preference for tests
+    if RUN_E2E != "1":
         try:
             cfg.settings.genlogs_prefer_mock_for_mock_ids = True
         except Exception:
@@ -52,9 +54,11 @@ def _prefer_mock_for_tests():
             pass
 
 def pytest_collection_modifyitems(config, items):
-    if RUN_E2E:
+    # Only skip E2E and integration tests when RUN_E2E is not '1'
+    if RUN_E2E == "1":
         return
     skip_e2e = pytest.mark.skip(reason="E2E tests disabled by default; set RUN_E2E=1 to enable")
     for item in list(items):
-        if "functional_e2e" in str(item.fspath):
+        fpath = str(item.fspath)
+        if "functional_e2e" in fpath or "/integration/" in fpath or "\\integration\\" in fpath:
             item.add_marker(skip_e2e)
