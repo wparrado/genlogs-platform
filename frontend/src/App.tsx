@@ -2,7 +2,7 @@ import React, { useState, useEffect, Suspense } from 'react'
 import SearchForm from './features/search/SearchForm'
 import * as api from './services/apiClient'
 import Button from './components/Button'
-import Loading from './components/Loading'
+import Toast from './components/Toast'
 
 // Avoid importing react-leaflet during Jest runs (it ships as ESM and breaks the transformer).
 // When under tests, provide a noop stub so App can render during unit tests without loading Leaflet.
@@ -23,23 +23,79 @@ function App(): React.ReactElement {
   const [loading, setLoading] = useState(false)
   const [routes, setRoutes] = useState<any[]>([])
   const [carriers, setCarriers] = useState<string[]>([])
-  const [error, setError] = useState<string | null>(null)
+  const [toastMessage, setToastMessage] = useState<string | null>(null)
   const [lastQuery, setLastQuery] = useState<{ from: string; to: string } | null>(null)
+
+  const showToast = (msg: string) => {
+    setToastMessage(msg)
+  }
 
   const handleSearch = async (from: string, to: string) => {
     setLastQuery({ from, to })
-    setError(null)
     setLoading(true)
     await new Promise((resolve) => setTimeout(resolve, 10))
     try {
       const res: any = await api.get(`/api/search?from_id=${encodeURIComponent(from)}&to_id=${encodeURIComponent(to)}`)
-      setCarriers(Array.isArray(res.carriers) ? res.carriers : [])
-      setRoutes(Array.isArray(res.routes) ? res.routes : [])
-      setError(null)
-    } catch (err) {
+      // Normalize carriers to strings for safe rendering (API may return objects)
+      const carriersList = Array.isArray(res.carriers) ? res.carriers.map((c: any) => {
+        if (!c && c !== 0) return String(c)
+        if (typeof c === 'string') return c
+        if (typeof c === 'object') return c.name || c.label || c.id || JSON.stringify(c)
+        return String(c)
+      }) : []
+      setCarriers(carriersList)
+
+      const normalizedRoutes = Array.isArray(res.routes) ? res.routes.map((r: any, idx: number) => {
+        // ensure id is a string
+        let id = r && r.id
+        if (typeof id === 'object') {
+          id = id.id ?? id.uuid ?? JSON.stringify(id)
+        }
+        id = String(id ?? `route-${idx}`)
+        // ensure summary is a string
+        let summary = r && (r.summary || r.label || r.name)
+        if (typeof summary === 'object') {
+          summary = summary.label || summary.name || JSON.stringify(summary)
+        }
+        summary = String(summary ?? '')
+
+        // extract duration (seconds or minutes) and format as human readable
+        let durationRaw = r && (r.duration || r.duration_seconds || r.durationSec || r.durationMinutes || r.duration_min || r.estimatedDuration || r.travel_time || r.eta || r.time)
+        let durationSeconds: number | null = null
+        if (typeof durationRaw === 'number') {
+          // assume seconds if > 1800 else minutes? prefer seconds when large
+          durationSeconds = durationRaw > 1000 ? durationRaw : durationRaw * 60
+        } else if (typeof durationRaw === 'string') {
+          const n = parseFloat(durationRaw)
+          if (!Number.isNaN(n)) {
+            durationSeconds = n > 1000 ? n : n * 60
+          }
+        }
+        function fmt(sec: number | null) {
+          if (!sec && sec !== 0) return ''
+          const mins = Math.round(sec / 60)
+          if (mins < 60) return `${mins} min`
+          const hrs = Math.floor(mins / 60)
+          const rem = mins % 60
+          return rem === 0 ? `${hrs} h` : `${hrs} h ${rem} min`
+        }
+
+        const duration = fmt(durationSeconds)
+
+        return { ...r, id, summary, duration }
+      }) : []
+      setRoutes(normalizedRoutes)
+    } catch (err: any) {
       setCarriers([])
       setRoutes([])
-      setError('An error occurred')
+      let msg = 'An error occurred while searching'
+      if (err && typeof err.status === 'number' && err.status >= 500 && err.status < 600) {
+        // generic message for server errors (avoid leaking sensitive info)
+        msg = 'Error del servidor. Por favor inténtalo más tarde.'
+      } else if (err && err.message) {
+        msg = err.message
+      }
+      showToast(msg)
     } finally {
       setLoading(false)
     }
@@ -50,89 +106,48 @@ function App(): React.ReactElement {
       <header className="site-header">
         <div className="container header-inner">
           <h1 className="brand">GenLogs</h1>
-          <nav className="nav">
-            <a href="#" className="nav-link">Features</a>
-            <a href="#" className="nav-link">Docs</a>
-            <a href="#" className="nav-link cta">Get Started</a>
-          </nav>
         </div>
       </header>
 
       <main>
-        <section className="hero">
-          <div className="container hero-inner">
-            <div className="hero-content">
-              <h1 className="hero-title">Logística clara y eficiente para tus rutas</h1>
-              <p className="hero-sub">Compara rutas, transportistas y tiempos en segundos. Visualiza y optimiza tus envíos con la potencia de GenLogs.</p>
-              <div className="hero-cta">
-                <section aria-label="search form">
-                  <SearchForm onSearch={handleSearch} />
-                </section>
-              </div>
+        <div className="container main-inner">
+          <section aria-label="search form">
+            <SearchForm onSearch={handleSearch} onError={(msg) => setToastMessage(msg)} />
+          </section>
+
+          <section aria-label="route results" className="routes">
+            <h4>Rutas</h4>
+            <ul>
+              {routes.length > 0 ? routes.map((r, idx) => (
+                <li key={r.id} className="route-item">
+                  <span className="route-name">{r.summary || r.label || r.id}</span>
+                  {r.duration ? <small className="route-duration muted">{r.duration}</small> : null}
+                </li>
+              )) : <li className="muted">Introduce origen y destino para ver opciones</li>}
+            </ul>
+          </section>
+
+          <section aria-label="carrier results" className="carriers">
+            <h4>Transportistas</h4>
+            <div className="chips">
+              {carriers.length > 0 ? carriers.map((c, i) => <span key={`${c}-${i}`} className="chip">{c}</span>) : <span className="muted">No hay transportistas disponibles</span>}
             </div>
-            <div className="hero-visual" aria-hidden="true">
-              <div className="card">
-                <h3>Resultados de ejemplo</h3>
-                <ul>
-                  <li>Sample Route A</li>
-                  <li>Sample Route B</li>
-                </ul>
-                {loading ? <Loading /> : null}
-              </div>
-            </div>
-          </div>
-        </section>
+          </section>
 
-        <section className="features container">
-          <div className="feature">
-            <h3>Comparación instantánea</h3>
-            <p>Filtra y compara transportistas y rutas en una sola vista.</p>
-          </div>
-          <div className="feature">
-            <h3>Optimización de costos</h3>
-            <p>Encuentra las rutas más económicas y rápidas para tus envíos.</p>
-          </div>
-          <div className="feature">
-            <h3>Integraciones</h3>
-            <p>Conecta fácilmente con tus sistemas existentes vía API.</p>
-          </div>
-        </section>
+          <section className="map">
+            <Suspense fallback={null}>
+              <Map routes={routes} />
+            </Suspense>
+          </section>
 
-        <section aria-label="route results" className="container routes">
-          <h4>Rutas</h4>
-          <ul>
-            {routes.length > 0 ? routes.map((r) => <li key={r.id}>{r.summary || r.label || r.id}</li>) : <li className="muted">Introduce origen y destino para ver opciones</li>}
-          </ul>
-        </section>
-
-        <section aria-label="carrier results" className="container carriers">
-          <h4>Transportistas</h4>
-          <div className="chips">
-            {carriers.length > 0 ? carriers.map((c) => <span key={c} className="chip">{c}</span>) : <span className="muted">No hay transportistas disponibles</span>}
-          </div>
-        </section>
-
-        <section className="container map">
-          <h4>Mapa</h4>
-          <Suspense fallback={null}>
-            <Map routes={routes} />
-          </Suspense>
-        </section>
-
-        <section className="container status">
-          {error ? (
-            <div className="error">
-              <div>{error}</div>
-              <Button onClick={() => { if (lastQuery) void handleSearch(lastQuery.from, lastQuery.to) }} className="btn">Retry</Button>
-            </div>
-          ) : null}
-        </section>
+          {/* toast shown globally (no inline plain-text errors) */}
+          <Toast message={toastMessage || ''} onClose={() => setToastMessage(null)} />
+        </div>
       </main>
 
       <footer className="site-footer">
         <div className="container footer-inner">
           <div>© {new Date().getFullYear()} GenLogs</div>
-          <div className="muted">Hecho con ♥</div>
         </div>
       </footer>
     </div>

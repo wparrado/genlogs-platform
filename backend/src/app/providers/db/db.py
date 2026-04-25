@@ -12,12 +12,27 @@ usage.
 from sqlmodel import SQLModel, create_engine, Session, select
 from app.config.settings import settings
 from typing import Dict, List
+import sqlalchemy
+from app.telemetry import trace
 
 # Import local models
 from .models import CityReference, Carrier, CarrierRoute
 
 # Engine using configured DATABASE URL
 engine = create_engine(settings.genlogs_database_url, echo=False)
+
+
+class DatabaseUnavailable(Exception):
+    """Raised when the database is unreachable or connection fails."""
+    pass
+
+
+def _session_with_dbcheck():
+    """Context manager wrapper to translate OperationalError into DatabaseUnavailable."""
+    try:
+        return Session(engine)
+    except sqlalchemy.exc.OperationalError as exc:
+        raise DatabaseUnavailable(str(exc)) from exc
 
 
 def get_session():
@@ -28,7 +43,7 @@ def get_session():
             with Session(engine) as session:
                 yield session
     """
-    with Session(engine) as session:
+    with _session_with_dbcheck() as session:
         yield session
 
 
@@ -42,6 +57,7 @@ def init_db() -> None:
 
 
 # Provider API: data access helpers used by services
+@trace()
 def get_city_by_place_id(place_id: str):
     """Return CityReference for a given place_id or None.
 
@@ -73,12 +89,16 @@ def get_city_by_place_id(place_id: str):
             # Fall back to DB lookup on any error
             pass
 
-    with Session(engine) as session:
-        return session.exec(select(CityReference).where(CityReference.place_id == place_id)).first()
+    try:
+        with _session_with_dbcheck() as session:
+            return session.exec(select(CityReference).where(CityReference.place_id == place_id)).first()
+    except sqlalchemy.exc.OperationalError as exc:
+        raise DatabaseUnavailable(str(exc)) from exc
 
 
 
 
+@trace()
 def suggest_cities(prefix: str, limit: int = 10) -> List[Dict]:
     """Return up to ``limit`` cities whose normalized_label starts with prefix.
 
@@ -87,26 +107,29 @@ def suggest_cities(prefix: str, limit: int = 10) -> List[Dict]:
     p = (prefix or "").lower()
     items: List[Dict] = []
 
-    with Session(engine) as session:
-        col = CityReference.__table__.c.normalized_label
-        stmt = (
-            select(CityReference)
-            .where(col.like(p + "%"))
-            .order_by(col)
-            .limit(limit)
-        )
-        rows = session.exec(stmt).all()
-
-        for r in rows:
-            items.append(
-                {
-                    "id": r.place_id or str(r.id),
-                    "label": f"{r.name}, {r.state}, {r.country}",
-                    "city": r.name,
-                    "state": r.state,
-                    "country": r.country,
-                }
+    try:
+        with _session_with_dbcheck() as session:
+            col = CityReference.__table__.c.normalized_label
+            stmt = (
+                select(CityReference)
+                .where(col.like(p + "%"))
+                .order_by(col)
+                .limit(limit)
             )
+            rows = session.exec(stmt).all()
+
+            for r in rows:
+                items.append(
+                    {
+                        "id": r.place_id or str(r.id),
+                        "label": f"{r.name}, {r.state}, {r.country}",
+                        "city": r.name,
+                        "state": r.state,
+                        "country": r.country,
+                    }
+                )
+    except sqlalchemy.exc.OperationalError as exc:
+        raise DatabaseUnavailable(str(exc)) from exc
 
     return items
 
@@ -130,6 +153,7 @@ _MOCK_CARRIER_MAP = {
 }
 
 
+@trace()
 def get_carriers_for_pair(from_place_id: str, to_place_id: str) -> List[Dict]:
     """Return carriers ordered by daily_trucks for a city pair.
 
@@ -146,38 +170,41 @@ def get_carriers_for_pair(from_place_id: str, to_place_id: str) -> List[Dict]:
             return _MOCK_CARRIER_MAP[key]
         return _MOCK_CARRIER_MAP["generic"]
 
-    with Session(engine) as session:
-        origin = session.exec(
-            select(CityReference).where(CityReference.place_id == from_place_id)
-        ).first()
-        destination = session.exec(
-            select(CityReference).where(CityReference.place_id == to_place_id)
-        ).first()
+    try:
+        with _session_with_dbcheck() as session:
+            origin = session.exec(
+                select(CityReference).where(CityReference.place_id == from_place_id)
+            ).first()
+            destination = session.exec(
+                select(CityReference).where(CityReference.place_id == to_place_id)
+            ).first()
 
-        rows = []
-        if origin and destination:
-            col = CarrierRoute.__table__.c.daily_trucks
-            oc = CarrierRoute.__table__.c.origin_city_id
-            dc = CarrierRoute.__table__.c.destination_city_id
-            q = (
-                select(Carrier.name, CarrierRoute.daily_trucks)
-                .join(Carrier, Carrier.id == CarrierRoute.carrier_id)
-                .where(oc == origin.id, dc == destination.id)
-                .order_by(col.desc())
-            )
-            rows = session.exec(q).all()
+            rows = []
+            if origin and destination:
+                col = CarrierRoute.__table__.c.daily_trucks
+                oc = CarrierRoute.__table__.c.origin_city_id
+                dc = CarrierRoute.__table__.c.destination_city_id
+                q = (
+                    select(Carrier.name, CarrierRoute.daily_trucks)
+                    .join(Carrier, Carrier.id == CarrierRoute.carrier_id)
+                    .where(oc == origin.id, dc == destination.id)
+                    .order_by(col.desc())
+                )
+                rows = session.exec(q).all()
 
-        if not rows:
-            col = CarrierRoute.__table__.c.daily_trucks
-            oc = CarrierRoute.__table__.c.origin_city_id
-            dc = CarrierRoute.__table__.c.destination_city_id
-            q = (
-                select(Carrier.name, CarrierRoute.daily_trucks)
-                .join(Carrier, Carrier.id == CarrierRoute.carrier_id)
-                .where(oc.is_(None), dc.is_(None))
-                .order_by(col.desc())
-            )
-            rows = session.exec(q).all()
+            if not rows:
+                col = CarrierRoute.__table__.c.daily_trucks
+                oc = CarrierRoute.__table__.c.origin_city_id
+                dc = CarrierRoute.__table__.c.destination_city_id
+                q = (
+                    select(Carrier.name, CarrierRoute.daily_trucks)
+                    .join(Carrier, Carrier.id == CarrierRoute.carrier_id)
+                    .where(oc.is_(None), dc.is_(None))
+                    .order_by(col.desc())
+                )
+                rows = session.exec(q).all()
+    except sqlalchemy.exc.OperationalError as exc:
+        raise DatabaseUnavailable(str(exc)) from exc
 
     # If DB returned rows, serialize and return
     if rows:

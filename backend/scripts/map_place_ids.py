@@ -27,8 +27,9 @@ import os
 import time
 import csv
 import argparse
-import logging
 from typing import Optional
+from app.logging_config import configure_logging
+from app.providers.logging_provider import get_logger
 
 import requests
 from sqlmodel import Session, select
@@ -36,7 +37,7 @@ from sqlmodel import Session, select
 from app.providers.db import engine, CityReference
 
 
-logger = logging.getLogger("map_place_ids")
+logger = get_logger("map_place_ids")
 
 
 def find_place_id_via_google(query_text: str, api_key: str) -> Optional[str]:
@@ -82,9 +83,9 @@ def main() -> int:
 
     args = parser.parse_args()
     if args.verbose:
-        logging.basicConfig(level=logging.DEBUG)
+        configure_logging("DEBUG")
     else:
-        logging.basicConfig(level=logging.INFO)
+        configure_logging("INFO")
 
     api_key = args.api_key or os.environ.get("GENLOGS_GOOGLE_API_KEY")
     if not api_key:

@@ -3,9 +3,9 @@ from app.providers.db import engine, CityReference, Carrier, CarrierRoute
 import uuid
 import os
 import requests
-import logging
+from app.providers.logging_provider import get_logger
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 # Minimal id lookup by name helper
 

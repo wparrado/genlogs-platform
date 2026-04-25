@@ -7,6 +7,10 @@ from fastapi import APIRouter, Query
 from fastapi.responses import JSONResponse
 
 from app.providers import db as db_provider
+from app.providers.db.db import DatabaseUnavailable
+from app.providers.logging_provider import get_logger
+
+logger = get_logger(__name__)
 from app.services.search_service import (
     get_carriers_for_pair,
     get_routes_for_pair,
@@ -46,8 +50,12 @@ async def search(
         )
 
     # Resolve city metadata from DB when possible for richer response
-    from_row = db_provider.get_city_by_place_id(from_id)
-    to_row = db_provider.get_city_by_place_id(to_id)
+    try:
+        from_row = db_provider.get_city_by_place_id(from_id)
+        to_row = db_provider.get_city_by_place_id(to_id)
+    except DatabaseUnavailable as exc:
+        logger.error("db.unavailable", extra={"error": str(exc)})
+        return JSONResponse(status_code=503, content={"code": "service_unavailable", "message": "Database unavailable"})
 
     if not from_row or not to_row:
         return JSONResponse(
@@ -55,8 +63,12 @@ async def search(
             content={"code": "invalid_request", "message": "Unknown city id(s)"},
         )
 
-    carriers_list = get_carriers_for_pair(from_id, to_id)
-    routes_list = get_routes_for_pair(from_id, to_id)
+    try:
+        carriers_list = get_carriers_for_pair(from_id, to_id)
+        routes_list = get_routes_for_pair(from_id, to_id)
+    except DatabaseUnavailable as exc:
+        logger.error("db.unavailable", extra={"error": str(exc)})
+        return JSONResponse(status_code=503, content={"code": "service_unavailable", "message": "Database unavailable"})
 
     response = {
         "from": {

@@ -28,3 +28,72 @@
 .button:hover {
   opacity: 0.95;
 }
+
+.field {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+}
+
+.suggestions {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  right: 0;
+  background: white;
+  color: #021028;
+  border: 1px solid rgba(2,16,40,0.08);
+  border-radius: 8px;
+  box-shadow: 0 6px 18px rgba(2,16,40,0.06);
+  max-height: 220px;
+  overflow: auto;
+  z-index: 50;
+  padding: 6px 0;
+  margin: 0;
+  list-style: none;
+}
+
+.suggestions li {
+  padding: 0;
+}
+
+.suggestionButton {
+  display: block;
+  width: 100%;
+  text-align: left;
+  padding: 8px 12px;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+}
+
+.suggestionButton:hover {
+  background: rgba(0,0,0,0.04);
+}
+
+li[aria-selected="true"] .suggestionButton {
+  background: linear-gradient(90deg,#06b6d4,#7c3aed);
+  color: white;
+}
+
+/* Make form responsive */
+.form {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  max-width: 720px;
+}
+
+@media (max-width: 700px) {
+  .form { flex-direction: column; align-items: stretch; }
+  .input { width: 100%; box-sizing: border-box; }
+  .actions { width: 100%; }
+  .suggestions { position: relative; top: 6px; }
+}
+
+.errors {
+  width: 100%;
+  color: #b91c1c;
+  margin-top: 8px;
+}
