@@ -8,14 +8,14 @@ from __future__ import annotations
 from typing import Dict, List, Optional
 import time
 import requests
-import logging
 
 from app.config.settings import settings
 from app.metrics import inc as metrics_inc
 from app.providers import db as db_provider
-import logging
+from app.providers.logging_provider import get_logger
+from app.telemetry import trace
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 def _call_google_places(input_text: str, api_key: str) -> Dict:
@@ -46,6 +46,7 @@ def _call_find_place(text: str, api_key: str) -> Optional[Dict]:
         return None
 
 
+@trace()
 def get_place_details_by_id(place_id: str) -> Optional[Dict]:
     """Retrieve place details for a place_id using Place Details API.
 
@@ -67,6 +68,7 @@ def get_place_details_by_id(place_id: str) -> Optional[Dict]:
         return None
 
 
+@trace()
 def get_city_suggestions(query: str, limit: int = 10) -> List[Dict]:
     """Return city suggestion items.
 

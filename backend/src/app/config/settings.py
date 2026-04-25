@@ -19,6 +19,9 @@ class Settings(BaseSettings):
     genlogs_cache_cities_ttl_seconds: int = 3600
     genlogs_cache_search_ttl_seconds: int = 900
     genlogs_cache_max_size: int = 256
+    # Optional vehicle type to pass to Google Directions/Routes APIs when present
+    # Example: "truck" — when set the provider will add this as a vehicle filter
+    genlogs_google_route_vehicle: str = ""
 
 
 settings = Settings()

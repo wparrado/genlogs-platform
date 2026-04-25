@@ -11,11 +11,13 @@ from typing import Dict, List
 from app.providers import db as db_provider
 from app.providers.maps import google, mock
 from app.config.settings import settings
-import logging
+from app.providers.logging_provider import get_logger
+from app.telemetry import trace
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
+@trace()
 def get_carriers_for_pair(from_place_id: str, to_place_id: str) -> List[Dict]:
     """Delegate carrier lookup to the DB provider.
 
@@ -25,6 +27,7 @@ def get_carriers_for_pair(from_place_id: str, to_place_id: str) -> List[Dict]:
     return db_provider.get_carriers_for_pair(from_place_id, to_place_id)
 
 
+@trace()
 def get_routes_for_pair(from_place_id: str, to_place_id: str) -> List[Dict]:
     """Return route options using primary maps provider (Google) with DB-backed mock fallback.
 
