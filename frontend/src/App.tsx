@@ -1,7 +1,6 @@
 import React, { useState, useEffect, Suspense } from 'react'
 import SearchForm from './features/search/SearchForm'
 import * as api from './services/apiClient'
-import Button from './components/Button'
 import Toast from './components/Toast'
 
 // Avoid importing react-leaflet during Jest runs (it ships as ESM and breaks the transformer).
@@ -17,22 +16,18 @@ function App(): React.ReactElement {
     // visible debug to help detect why UI might appear blank in browser
     // logs show in DevTools Console and we also render a small overlay when in dev mode
     // eslint-disable-next-line no-console
-    console.log('App mounted — DEV:', import.meta.env.DEV)
+    console.log('App mounted — DEV:', process.env.NODE_ENV === 'development')
   }, [])
 
-  const [loading, setLoading] = useState(false)
   const [routes, setRoutes] = useState<any[]>([])
   const [carriers, setCarriers] = useState<string[]>([])
   const [toastMessage, setToastMessage] = useState<string | null>(null)
-  const [lastQuery, setLastQuery] = useState<{ from: string; to: string } | null>(null)
 
   const showToast = (msg: string) => {
     setToastMessage(msg)
   }
 
   const handleSearch = async (from: string, to: string) => {
-    setLastQuery({ from, to })
-    setLoading(true)
     await new Promise((resolve) => setTimeout(resolve, 10))
     try {
       const res: any = await api.get(`/api/search?from_id=${encodeURIComponent(from)}&to_id=${encodeURIComponent(to)}`)
@@ -97,7 +92,7 @@ function App(): React.ReactElement {
       }
       showToast(msg)
     } finally {
-      setLoading(false)
+      // no-op
     }
   }
 
@@ -118,7 +113,7 @@ function App(): React.ReactElement {
           <section aria-label="route results" className="routes">
             <h4>Rutas</h4>
             <ul>
-              {routes.length > 0 ? routes.map((r, idx) => (
+              {routes.length > 0 ? routes.map((r) => (
                 <li key={r.id} className="route-item">
                   <span className="route-name">{r.summary || r.label || r.id}</span>
                   {r.duration ? <small className="route-duration muted">{r.duration}</small> : null}
