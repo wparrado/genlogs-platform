@@ -124,22 +124,45 @@ jobs:
         run: |
           set -euo pipefail
           SA="${GCP_WORKLOAD_IDENTITY_SA:-}"
+          echo "DEBUG: gcloud auth list"
+          gcloud auth list || true
+          echo "DEBUG: gcloud config get-value account"
+          gcloud config get-value account || true
+          echo "DEBUG: gcloud auth print-identity-token (may fail)"
+          gcloud auth print-identity-token || true
+          echo "DEBUG: gcloud auth print-access-token (may fail)"
+          gcloud auth print-access-token || true
+
           INSTANCE_CONN=""
           for attempt in $(seq 1 5); do
-            if [ -n "$SA" ]; then
-              INSTANCE_CONN=$(gcloud sql instances describe genlogs-db --project=${{ env.PROJECT_ID }} --format='get(connectionName)' --impersonate-service-account="$SA" 2>/dev/null || true)
-            else
-              INSTANCE_CONN=$(gcloud sql instances describe genlogs-db --project=${{ env.PROJECT_ID }} --format='get(connectionName)' 2>/dev/null || true)
-            fi
-            if [ -n "$INSTANCE_CONN" ]; then
+            echo "Attempt $attempt: describe WITHOUT impersonation"
+            OUT=$(gcloud sql instances describe genlogs-db --project=${{ env.PROJECT_ID }} --format='get(connectionName)' 2>&1 || true)
+            echo "Output (no-impersonate):<<OUTPUT\n$OUT\nOUTPUT"
+            if echo "$OUT" | grep -q "projects/" || echo "$OUT" | grep -q "/instances/"; then
+              INSTANCE_CONN="$OUT"
               echo "INSTANCE_CONN=$INSTANCE_CONN" >> $GITHUB_ENV
               echo "Found INSTANCE_CONN=$INSTANCE_CONN"
               break
             fi
+
+            if [ -n "$SA" ]; then
+              echo "Attempt $attempt: describe WITH impersonation $SA"
+              OUT=$(gcloud sql instances describe genlogs-db --project=${{ env.PROJECT_ID }} --format='get(connectionName)' --impersonate-service-account="$SA" 2>&1 || true)
+              echo "Output (impersonate):<<OUTPUT\n$OUT\nOUTPUT"
+              if echo "$OUT" | grep -q "projects/" || echo "$OUT" | grep -q "/instances/"; then
+                INSTANCE_CONN="$OUT"
+                echo "INSTANCE_CONN=$INSTANCE_CONN" >> $GITHUB_ENV
+                echo "Found INSTANCE_CONN=$INSTANCE_CONN"
+                break
+              fi
+            fi
+
             echo "Could not get Cloud SQL instance connection name; retrying ($attempt)"
             sleep 3
           done
+
           if [ -z "$INSTANCE_CONN" ]; then
+            echo "Final debug: last outputs above" >&2
             echo "Could not get Cloud SQL instance connection name" >&2
             exit 1
           fi
