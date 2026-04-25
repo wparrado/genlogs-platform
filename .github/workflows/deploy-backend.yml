@@ -75,28 +75,51 @@ jobs:
             exit 1
           fi
 
-          # Resolve immutable image digest — prefer Cloud Build's output (contains digest), fallback to Artifact Registry
+          # Resolve immutable image digest — prefer Cloud Build's output (contains digest), fallback to Artifact Registry per-tag lookup
           IMAGE_REF=""
           if [ -n "$BUILD_ID" ]; then
+            echo "Attempting to read images from Cloud Build result: $BUILD_ID"
             IMAGES=$(gcloud builds describe "$BUILD_ID" --project="${{ env.PROJECT_ID }}" --format='get(results.images[*].name)') || true
+            echo "Cloud Build reported images: $IMAGES"
             for img in $IMAGES; do
+              # If build provided an image with digest already, use it
               if echo "$img" | grep -q "@"; then
                 IMAGE_REF="$img"
                 break
               fi
+              # If image is tagged (repo:tag), try to resolve digest via artifacts describe (with retries)
+              if echo "$img" | grep -q ":"; then
+                REPO_TAG="$img"
+                echo "Resolving digest for tag $REPO_TAG"
+                for attempt in $(seq 1 10); do
+                  DIGEST=$(gcloud artifacts docker images describe "$REPO_TAG" --project="${{ env.PROJECT_ID }}" --format='get(image_summary.digest)' 2>/dev/null || true)
+                  if [ -n "$DIGEST" ]; then
+                    IMAGE_REF="${REPO_TAG%@*}@$DIGEST"
+                    break 2
+                  fi
+                  echo "Digest not present yet for $REPO_TAG; retrying ($attempt)"
+                  sleep 3
+                done
+              fi
             done
           fi
 
-          # Fallback: try Artifact Registry lookup
+          # Last-resort fallback: list latest digest from repository
           if [ -z "$IMAGE_REF" ]; then
-            DIGEST="$(gcloud artifacts docker images list "$REPO_PATH" --project="${{ env.PROJECT_ID }}" --format='value(digest)' --sort-by='~createTime' --limit=1)" || true
-            if [ -n "$DIGEST" ]; then
-              IMAGE_REF="$REPO_PATH@$DIGEST"
-            fi
+            echo "Falling back to listing latest digest from repo $REPO_PATH"
+            for attempt in $(seq 1 10); do
+              DIGEST="$(gcloud artifacts docker images list "$REPO_PATH" --project="${{ env.PROJECT_ID }}" --format='value(digest)' --sort-by='~createTime' --limit=1 2>/dev/null || true)"
+              if [ -n "$DIGEST" ]; then
+                IMAGE_REF="$REPO_PATH@$DIGEST"
+                break
+              fi
+              echo "No digest yet in Artifact Registry for $REPO_PATH; retrying ($attempt)"
+              sleep 3
+            done
           fi
 
           if [ -z "$IMAGE_REF" ]; then
-            echo "Failed to resolve image digest for $REPO_PATH" >&2
+            echo "Failed to resolve image digest for $REPO_PATH (tried Cloud Build results and Artifact Registry)" >&2
             exit 1
           fi
           echo "IMAGE_REF=$IMAGE_REF" >> $GITHUB_ENV
