@@ -17,6 +17,31 @@ from app.telemetry import trace
 logger = get_logger(__name__)
 
 
+def _parse_duration_text(txt: str):
+    """Parse human-readable duration text into seconds.
+
+    Returns None on parse failure.
+    """
+    if not txt:
+        return None
+    txt = txt.lower()
+    h = 0
+    m = 0
+    try:
+        if 'hr' in txt or 'hour' in txt:
+            parts = txt.replace('hours', 'hr').replace('hour', 'hr').split('hr')
+            h_part = parts[0].strip()
+            h = int(h_part) if h_part.isdigit() else 0
+            if len(parts) > 1 and 'min' in parts[1]:
+                m_part = parts[1].split('min')[0].strip()
+                m = int(m_part) if m_part.isdigit() else 0
+        elif 'min' in txt:
+            m = int(txt.split('min')[0].strip())
+        return h * 3600 + m * 60
+    except Exception:
+        return None
+
+
 @trace()
 def get_carriers_for_pair(from_place_id: str, to_place_id: str) -> List[Dict]:
     """Delegate carrier lookup to the DB provider.
@@ -56,26 +81,6 @@ def get_routes_for_pair(from_place_id: str, to_place_id: str) -> List[Dict]:
     # Ensure each route has a numeric duration (seconds) for sorting. Providers
     # may supply 'duration' (seconds) or only 'durationText'. Attempt to parse
     # durationText when necessary; otherwise treat missing durations as large.
-    def _parse_duration_text(txt: str):
-        if not txt:
-            return None
-        txt = txt.lower()
-        h = 0
-        m = 0
-        try:
-            if 'hr' in txt or 'hour' in txt:
-                parts = txt.replace('hours', 'hr').replace('hour', 'hr').split('hr')
-                h_part = parts[0].strip()
-                h = int(h_part) if h_part.isdigit() else 0
-                if len(parts) > 1 and 'min' in parts[1]:
-                    m_part = parts[1].split('min')[0].strip()
-                    m = int(m_part) if m_part.isdigit() else 0
-            elif 'min' in txt:
-                m = int(txt.split('min')[0].strip())
-            return h * 3600 + m * 60
-        except (ValueError, TypeError):
-            return None
-
     for r in routes:
         if r.get('duration') is None:
             r['duration'] = _parse_duration_text(r.get('durationText')) or 10**9

@@ -4,12 +4,11 @@ This module contains the concrete database implementation and helpers and is
 intended to live inside the `app.providers.db` provider package. The rest of
 the application should import these symbols from the provider namespace.
 
-It also exposes a small provider API for DB-backed operations used by the
-services layer so that business logic does not depend on raw SQLModel/engine
-usage.
+It also exposes a small provider API for DB-backed operations used by services
+layer so that business logic does not depend on raw SQLModel/engine usage.
 """
 
-from typing import Dict, List
+from typing import Dict, List, Optional
 import os
 import csv
 
@@ -104,8 +103,6 @@ def get_city_by_place_id(place_id: str):
         raise DatabaseUnavailable(str(exc)) from exc
 
 
-
-
 @trace()
 def suggest_cities(prefix: str, limit: int = 10) -> List[Dict]:
     """Return up to ``limit`` cities whose normalized_label starts with prefix.
@@ -117,57 +114,62 @@ def suggest_cities(prefix: str, limit: int = 10) -> List[Dict]:
     p = (prefix or "").lower()
     items: List[Dict] = []
 
-    # Attempt to use CSV-based mappings as a lightweight fallback so tests and
-    # local runs don't strictly require a running Postgres instance.
+    def _candidate_paths(base: str) -> List[str]:
+        """Return list of candidate mapping paths relative to base."""
+        return [
+            os.path.normpath(os.path.join(base, '..', '..', '..', '..', 'placeid_mappings.csv')),
+            os.path.normpath(os.path.join(base, '..', '..', '..', 'placeid_mappings.csv')),
+            os.path.normpath(os.path.join(base, '..', '..', 'placeid_mappings.csv')),
+            os.path.normpath(os.path.join(base, '..', 'placeid_mappings.csv')),
+            os.path.normpath(os.path.join(base, 'placeid_mappings.csv')),
+            os.path.normpath(os.path.join(os.getcwd(), 'placeid_mappings.csv')),
+        ]
+
+    def _parse_label_row(row: Dict) -> Optional[Dict]:
+        """Convert a CSV row into a suggestion item or None if label empty."""
+        label = (row.get('label') or '').strip()
+        if not label:
+            return None
+        parts = [part.strip() for part in label.split(',')]
+        name = parts[0] if parts else ''
+        state = parts[1] if len(parts) > 1 else ''
+        country = parts[2] if len(parts) > 2 else 'US'
+        return {
+            "id": (row.get('old_place_id') or row.get('new_place_id') or row.get('city_id')),
+            "label": f"{name}, {state}, {country}",
+            "city": name,
+            "state": state,
+            "country": country,
+        }
+
+    def _csv_search(mapping_path: str, p_lower: str, limit_val: int) -> List[Dict]:
+        """Search the CSV at mapping_path for labels matching prefix p_lower."""
+        results: List[Dict] = []
+        try:
+            with open(mapping_path, newline='', encoding='utf-8') as f:
+                reader = csv.DictReader(f)
+                for row in reader:
+                    item = _parse_label_row(row)
+                    if not item:
+                        continue
+                    if item['label'].lower().startswith(p_lower):
+                        results.append(item)
+                        if len(results) >= limit_val:
+                            return results
+        except (OSError, csv.Error):
+            return []
+        return results
+
+    # Attempt to use CSV-based mappings as a lightweight fallback
     try:
-        # If tests or runtime prefer mock/provider fallback, check the CSV first
         if getattr(settings, "genlogs_prefer_mock_for_mock_ids", False):
-            # Search for placeid_mappings.csv in candidate locations relative to this file
-            candidates = []
             base = os.path.dirname(__file__)
-            candidates.append(
-                os.path.normpath(os.path.join(base, '..', '..', '..', '..', 'placeid_mappings.csv'))
-            )
-            candidates.append(os.path.normpath(os.path.join(base, '..', '..', '..', 'placeid_mappings.csv')))
-            candidates.append(os.path.normpath(os.path.join(base, '..', '..', 'placeid_mappings.csv')))
-            candidates.append(os.path.normpath(os.path.join(base, '..', 'placeid_mappings.csv')))
-            candidates.append(os.path.normpath(os.path.join(base, 'placeid_mappings.csv')))
-            candidates.append(os.path.normpath(os.path.join(os.getcwd(), 'placeid_mappings.csv')))
-
-            mapping_path = None
-            for c in candidates:
+            for c in _candidate_paths(base):
                 if os.path.exists(c):
-                    mapping_path = c
-                    break
-
-            if mapping_path:
-                with open(mapping_path, newline='', encoding='utf-8') as f:
-                    reader = csv.DictReader(f)
-                    for row in reader:
-                        label = (row.get('label') or '').strip()
-                        if not label:
-                            continue
-                        norm = label.lower()
-                        if norm.startswith(p):
-                            parts = [part.strip() for part in label.split(',')]
-                            name = parts[0] if parts else ''
-                            state = parts[1] if len(parts) > 1 else ''
-                            country = parts[2] if len(parts) > 2 else 'US'
-                            items.append({
-                                "id": (
-                                    row.get('old_place_id')
-                                    or row.get('new_place_id')
-                                    or row.get('city_id')
-                                ),
-                                "label": f"{name}, {state}, {country}",
-                                "city": name,
-                                "state": state,
-                                "country": country,
-                            })
-                            if len(items) >= limit:
-                                return items
+                    items = _csv_search(c, p, limit)[:limit]
+                    if items:
+                        return items
     except (OSError, csv.Error):
-        # If CSV fallback fails, continue to DB-backed lookup below
         items = []
 
     # Finally, attempt DB-backed lookup
@@ -194,7 +196,6 @@ def suggest_cities(prefix: str, limit: int = 10) -> List[Dict]:
                 )
     except sqlalchemy.exc.OperationalError:
         # If DB unavailable and we have no CSV results, return an empty list.
-        # City suggestion should be resilient for clients even when DB is down.
         if items:
             return items
         return []
