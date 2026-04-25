@@ -9,6 +9,8 @@ import json
 import os
 from datetime import datetime, timezone
 
+from app.utils.request_id import get_request_id
+
 
 class JSONFormatter(logging.Formatter):
     """Simple JSON log formatter.
@@ -18,8 +20,13 @@ class JSONFormatter(logging.Formatter):
     """
 
     def format(self, record: logging.LogRecord) -> str:
+        timestamp = (
+            datetime.fromtimestamp(record.created, timezone.utc)
+            .isoformat()
+            .replace("+00:00", "Z")
+        )
         record_dict = {
-            "timestamp": datetime.fromtimestamp(record.created, timezone.utc).isoformat().replace('+00:00', 'Z'),
+            "timestamp": timestamp,
             "level": record.levelname,
             "logger": record.name,
             "message": record.getMessage(),
@@ -27,14 +34,12 @@ class JSONFormatter(logging.Formatter):
 
         # Attach current request id from context if not provided on the record
         try:
-            from app.utils.request_id import get_request_id
-
             if "request_id" not in record.__dict__:
                 rid = get_request_id()
                 if rid:
                     record_dict["request_id"] = rid
-        except ImportError:
-            # If request id module isn't available for some reason, skip it
+        except Exception:
+            # If request id lookup fails for any reason, skip it
             pass
 
         # Include exception text if present

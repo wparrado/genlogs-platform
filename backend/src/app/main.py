@@ -21,10 +21,10 @@ from app.utils.request_id import (
     generate_request_id,
     reset_request_id,
 )
+from app.telemetry import init_tracing, get_tracer, instrument_app
 
 # Configure structured logging as early as possible
 configure_logging()
-from app.telemetry import init_tracing, get_tracer, instrument_app
 
 # Initialize tracing (no-op if OpenTelemetry not installed)
 init_tracing()
