@@ -13,7 +13,7 @@ export default defineConfig({
     // When running in Docker, FRONTEND_PROXY (set in docker-compose) will point to the backend service.
     proxy: {
       '/api': {
-        target: process.env.FRONTEND_PROXY || 'https://genlogs-backend-347212169781.us-central1.run.app',
+        target: process.env.FRONTEND_PROXY || 'http://localhost:8000',
         changeOrigin: true,
         secure: false,
       },
