@@ -38,6 +38,7 @@ jobs:
         run: gcloud auth configure-docker --quiet
 
       - name: Build and push image (Cloud Build)
+        working-directory: backend
         run: |
           gcloud builds submit --tag ${{ env.REGION }}-docker.pkg.dev/${{ env.PROJECT_ID }}/${{ env.REPOSITORY }}/${{ env.IMAGE }}:${{ github.sha }} --project=${{ env.PROJECT_ID }}
 
