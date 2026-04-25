@@ -136,15 +136,15 @@ jobs:
         run: |
           set -euo pipefail
           echo "Deploying ${{ env.SERVICE_NAME }} to Cloud Run with image $IMAGE_REF"
+          # Escape commas in CORS_ORIGINS so gcloud parses it as a single value
+          ESCAPED_CORS=$(printf '%s' "${CORS_ORIGINS}" | sed 's/,/\\,/g')
+          ENV_PAIRS="DB_HOST=/cloudsql/$INSTANCE_CONN,DB_PORT=5432,POSTGRES_USER=postgres,GENLOGS_CORS_ORIGINS=$ESCAPED_CORS"
           gcloud run deploy ${{ env.SERVICE_NAME }} \
             --image="$IMAGE_REF" \
             --region=${{ env.REGION }} --platform=managed --allow-unauthenticated \
             --add-cloudsql-instances="$INSTANCE_CONN" \
             --set-secrets=DB_PASSWORD=genlogs-db-pass:latest \
-            --set-env-vars DB_HOST="/cloudsql/$INSTANCE_CONN" \
-            --set-env-vars DB_PORT=5432 \
-            --set-env-vars POSTGRES_USER=postgres \
-            --set-env-vars GENLOGS_CORS_ORIGINS="${{ env.CORS_ORIGINS }}" \
+            --set-env-vars "$ENV_PAIRS" \
             --project=${{ env.PROJECT_ID }} --quiet
 
       - name: Run migrations via Cloud Run Job (optional)
