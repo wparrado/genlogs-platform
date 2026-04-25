@@ -61,7 +61,15 @@ jobs:
       - name: Activate SA key (fallback)
         if: ${{ env.GCP_SA_KEY != '' }}
         run: |
-          echo "${{ env.GCP_SA_KEY }}" > /tmp/sa.json
+          set -euo pipefail
+          # Try to write raw JSON; fall back to base64 decode if JSON invalid
+          printf '%s' "${{ env.GCP_SA_KEY }}" > /tmp/sa.json || true
+          if ! python3 -c "import json,sys; json.load(open('/tmp/sa.json'))" >/dev/null 2>&1; then
+            echo "Raw secret not valid JSON, attempting base64 decode"
+            echo "${{ env.GCP_SA_KEY }}" | base64 --decode > /tmp/sa.json || true
+          fi
+          # Validate final file is JSON
+          python3 -c "import json,sys; json.load(open('/tmp/sa.json'))" || (echo "Failed to produce valid JSON for SA key" && exit 1)
           gcloud auth activate-service-account --key-file=/tmp/sa.json
 
       - name: Configure docker for Artifact Registry
