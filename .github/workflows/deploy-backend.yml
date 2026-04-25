@@ -35,6 +35,18 @@ jobs:
           workload_identity_provider: ${{ secrets.GCP_WORKLOAD_IDENTITY_PROVIDER }}
           service_account: ${{ secrets.GCP_WORKLOAD_IDENTITY_SA }}
 
+      - name: Debug authenticated identity
+        run: |
+          set -euo pipefail
+          echo "=== gcloud auth list ==="
+          gcloud auth list --format="value(account,status)" || true
+          echo "=== gcloud config account ==="
+          gcloud config get-value account || true
+          echo "=== Print identity token (if available) ==="
+          gcloud auth print-identity-token || true
+          echo "=== Optional: service account IAM policy (may require permissions) ==="
+          gcloud iam service-accounts get-iam-policy "${{ secrets.GCP_WORKLOAD_IDENTITY_SA }}" --format="json" || true
+
       - name: Configure docker for Artifact Registry
         run: gcloud auth configure-docker --quiet
 
