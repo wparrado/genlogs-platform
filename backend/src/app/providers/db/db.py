@@ -184,10 +184,11 @@ def suggest_cities(prefix: str, limit: int = 10) -> List[Dict]:
                     }
                 )
     except sqlalchemy.exc.OperationalError as exc:
-        # If DB unavailable and we have no CSV results, raise DatabaseUnavailable
+        # If DB unavailable and we have no CSV results, return an empty list.
+        # City suggestion should be resilient for clients even when DB is down.
         if items:
             return items
-        raise DatabaseUnavailable(str(exc)) from exc
+        return []
 
     return items
 
