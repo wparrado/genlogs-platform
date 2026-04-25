@@ -18,6 +18,7 @@ jobs:
       REPOSITORY: ${{ secrets.ARTIFACT_REPO }}
       IMAGE: genlogs-backend
       SERVICE_NAME: genlogs-backend
+      RUN_MIGRATIONS: 'true'
     steps:
       - uses: actions/checkout@v4
 
