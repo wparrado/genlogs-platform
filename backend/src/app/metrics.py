@@ -21,11 +21,11 @@ try:
         CONTENT_TYPE_LATEST,
     )
     PROM_AVAILABLE = True
-    _registry = CollectorRegistry()
+    _REGISTRY = CollectorRegistry()
     _prom_counters = {}
 except ImportError:
     PROM_AVAILABLE = False
-    _registry = None
+    _REGISTRY = None
     _prom_counters = {}
 
 
@@ -54,10 +54,10 @@ def reset() -> None:
     """
     with _lock:
         _inmem.clear()
-        if PROM_AVAILABLE and _registry is not None:
+        if PROM_AVAILABLE and _REGISTRY is not None:
             for counter in list(_prom_counters.values()):
                 try:
-                    _registry.unregister(counter)
+                    _REGISTRY.unregister(counter)
                 except Exception:
                     # best-effort cleanup; ignore failures
                     pass
@@ -66,8 +66,8 @@ def reset() -> None:
 
 def prometheus_metrics_latest() -> Optional[bytes]:
     """Return Prometheus exposition bytes if prometheus_client is available."""
-    if PROM_AVAILABLE and _registry is not None:
-        return generate_latest(_registry)
+    if PROM_AVAILABLE and _REGISTRY is not None:
+        return generate_latest(_REGISTRY)
     return None
 
 

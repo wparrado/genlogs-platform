@@ -22,10 +22,14 @@ try:
     from opentelemetry.sdk.resources import Resource
     # Try OTLP exporters (http/grpc)
     try:
-        from opentelemetry.exporter.otlp.proto.http.trace_exporter import OTLPSpanExporter as OTLP_SPAN_EXPORTER
+        from opentelemetry.exporter.otlp.proto.http.trace_exporter import (
+            OTLPSpanExporter as OTLP_SPAN_EXPORTER
+        )
     except ImportError:
         try:
-            from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import OTLPSpanExporter as OTLP_SPAN_EXPORTER
+            from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import (
+                OTLPSpanExporter as OTLP_SPAN_EXPORTER
+            )
         except ImportError:
             OTLP_SPAN_EXPORTER = None
     from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
@@ -69,13 +73,18 @@ def _instantiate_otlp_exporter(endpoint: str, headers: Optional[dict]):
             return None
 
 
-def init_tracing(service_name: str = "genlogs", otlp_endpoint: Optional[str] = None, otlp_headers: Optional[dict] = None) -> None:
+def init_tracing(
+    service_name: str = "genlogs",
+    otlp_endpoint: Optional[str] = None,
+    otlp_headers: Optional[dict] = None,
+) -> None:
     """Initialize tracing pipeline when OpenTelemetry is available.
 
     Behavior:
-    - If OTLP endpoint is provided (or OTEL_EXPORTER_OTLP_ENDPOINT env var), try to use OTLPSpanExporter.
+    - If an OTLP endpoint is configured (parameter or OTEL_EXPORTER_OTLP_ENDPOINT),
+      attempt to use OTLPSpanExporter.
     - Otherwise fall back to ConsoleSpanExporter for local visibility.
-    - Uses a Resource with service.name set to service_name.
+    - Uses a Resource with the service.name set to service_name.
     """
     if not OTEL_AVAILABLE:
         return
