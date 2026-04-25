@@ -1,3 +1,9 @@
+"""Structured logging helpers used by the application.
+
+Provides a JSONFormatter and configure_logging() helper to emit compact JSON
+logs that include a request_id when available.
+"""
+
 import logging
 import json
 import os
@@ -27,7 +33,7 @@ class JSONFormatter(logging.Formatter):
                 rid = get_request_id()
                 if rid:
                     record_dict["request_id"] = rid
-        except Exception:
+        except ImportError:
             # If request id module isn't available for some reason, skip it
             pass
 
@@ -64,7 +70,7 @@ class JSONFormatter(logging.Formatter):
                 try:
                     json.dumps(v)
                     record_dict[k] = v
-                except Exception:
+                except (TypeError, ValueError):
                     record_dict[k] = str(v)
 
         return json.dumps(record_dict, ensure_ascii=False)
@@ -80,7 +86,7 @@ def configure_logging(level: str | None = None) -> None:
 
     try:
         lvl = getattr(logging, level.upper())
-    except Exception:
+    except AttributeError:
         lvl = logging.INFO
 
     handler = logging.StreamHandler()

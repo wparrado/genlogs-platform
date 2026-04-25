@@ -19,17 +19,17 @@ try:
     from opentelemetry.sdk.resources import Resource
     # Try OTLP exporters (http/grpc)
     try:
-        from opentelemetry.exporter.otlp.proto.http.trace_exporter import OTLPSpanExporter
-    except Exception:
+        from opentelemetry.exporter.otlp.proto.http.trace_exporter import OTLPSpanExporter as OTLP_SPAN_EXPORTER
+    except ImportError:
         try:
-            from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import OTLPSpanExporter
-        except Exception:
-            OTLPSpanExporter = None
+            from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import OTLPSpanExporter as OTLP_SPAN_EXPORTER
+        except ImportError:
+            OTLP_SPAN_EXPORTER = None
     from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
     from opentelemetry.instrumentation.requests import RequestsInstrumentor
     from opentelemetry.instrumentation.sqlalchemy import SQLAlchemyInstrumentor
     OTEL_AVAILABLE = True
-except Exception:
+except ImportError:
     OTEL_AVAILABLE = False
 
 
@@ -61,14 +61,17 @@ def init_tracing(service_name: str = "genlogs", otlp_endpoint: Optional[str] = N
         headers = hdrs or None
 
     exporter = None
-    if endpoint and OTLPSpanExporter is not None:
+    if endpoint and OTLP_SPAN_EXPORTER is not None:
         try:
             # prefer HTTP constructor that accepts endpoint and headers
-            exporter = OTLPSpanExporter(endpoint=endpoint, headers=headers)
-        except Exception:
+            exporter = OTLP_SPAN_EXPORTER(endpoint=endpoint, headers=headers)
+        except Exception as exc:
+            import logging
+            logging.getLogger(__name__).exception("failed to instantiate OTLP_SPAN_EXPORTER with endpoint", exc_info=exc)
             try:
-                exporter = OTLPSpanExporter()
-            except Exception:
+                exporter = OTLP_SPAN_EXPORTER()
+            except Exception as exc2:
+                logging.getLogger(__name__).exception("failed to instantiate OTLP_SPAN_EXPORTER without endpoint", exc_info=exc2)
                 exporter = None
 
     if exporter is None:
@@ -89,14 +92,15 @@ def instrument_app(app: Any, engine: Any = None) -> bool:
 
     try:
         FastAPIInstrumentor().instrument_app(app)
-    except Exception:
-        # Non-fatal: continue
-        pass
+    except Exception as exc:
+        import logging
+        logging.getLogger(__name__).exception("FastAPIInstrumentor.instrument_app failed", exc_info=exc)
 
     try:
         RequestsInstrumentor().instrument()
-    except Exception:
-        pass
+    except Exception as exc:
+        import logging
+        logging.getLogger(__name__).exception("RequestsInstrumentor.instrument failed", exc_info=exc)
 
     if engine is not None:
         try:
@@ -130,8 +134,8 @@ def get_tracer(name: str):
         def __exit__(self, exc_type, exc, tb):
             return False
 
-        def set_attribute(self, key: str, value: object) -> None:
-            # no-op for compatibility
+        def set_attribute(self, _key: str, _value: object) -> None:
+            """No-op attribute setter for compatibility with real Span."""
             return None
 
     class _NoopTracer:
@@ -158,13 +162,13 @@ def trace(span_name: str | None = None) -> Callable:
             # tracer.start_as_current_span may be a contextmanager
             ctx = tracer.start_as_current_span(name)
             enter = getattr(ctx, "__enter__", None)
-            exit = getattr(ctx, "__exit__", None)
-            if enter and exit:
+            _exit = getattr(ctx, "__exit__", None)
+            if enter and _exit:
                 enter()
                 try:
                     return fn(*args, **kwargs)
                 finally:
-                    exit(None, None, None)
+                    _exit(None, None, None)
             else:
                 # If tracer.start_as_current_span is a contextmanager function
                 with ctx:
@@ -175,6 +179,7 @@ def trace(span_name: str | None = None) -> Callable:
             wrapped.__name__ = fn.__name__
             wrapped.__doc__ = fn.__doc__
         except Exception:
+            # Ignore metadata preservation failures
             pass
         return wrapped
 

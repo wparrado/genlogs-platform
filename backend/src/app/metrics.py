@@ -14,11 +14,16 @@ _inmem = Counter()
 
 # Try to use prometheus_client but tolerate absence
 try:
-    from prometheus_client import Counter as PromCounter, CollectorRegistry, generate_latest, CONTENT_TYPE_LATEST
+    from prometheus_client import (
+        Counter as PromCounter,
+        CollectorRegistry,
+        generate_latest,
+        CONTENT_TYPE_LATEST,
+    )
     PROM_AVAILABLE = True
     _registry = CollectorRegistry()
     _prom_counters = {}
-except Exception:
+except ImportError:
     PROM_AVAILABLE = False
     _registry = None
     _prom_counters = {}
@@ -43,7 +48,7 @@ def get(name: str) -> int:
 
 def reset() -> None:
     """Reset in-memory counters and recreate Prometheus registry if used."""
-    global _registry, _prom_counters, _inmem
+    global _registry, _prom_counters
     with _lock:
         _inmem.clear()
         if PROM_AVAILABLE:
@@ -59,6 +64,7 @@ def prometheus_metrics_latest() -> Optional[bytes]:
 
 
 def prometheus_content_type() -> str:
+    """Return the appropriate content-type for Prometheus metrics or JSON fallback."""
     if PROM_AVAILABLE:
         return CONTENT_TYPE_LATEST
     return "application/json"

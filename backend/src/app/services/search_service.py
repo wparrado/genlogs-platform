@@ -73,7 +73,7 @@ def get_routes_for_pair(from_place_id: str, to_place_id: str) -> List[Dict]:
             elif 'min' in txt:
                 m = int(txt.split('min')[0].strip())
             return h * 3600 + m * 60
-        except Exception:
+        except (ValueError, TypeError):
             return None
 
     for r in routes:

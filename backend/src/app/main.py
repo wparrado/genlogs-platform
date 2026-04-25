@@ -255,6 +255,7 @@ async def http_exception_handler(request: Request, exc: HTTPException):
 
 @app.exception_handler(RequestValidationError)
 async def validation_exception_handler(request: Request, exc: RequestValidationError):
+    """Handle request validation errors by logging and returning a 422 JSON body."""
     # Validation errors are typically 422 but may be surfaced as 400 in some flows.
     errors = exc.errors()
     logger.warning("validation.exception", extra={

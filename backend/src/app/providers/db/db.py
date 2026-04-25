@@ -9,10 +9,14 @@ services layer so that business logic does not depend on raw SQLModel/engine
 usage.
 """
 
-from sqlmodel import SQLModel, create_engine, Session, select
-from app.config.settings import settings
 from typing import Dict, List
+import os
+import csv
+
 import sqlalchemy
+from sqlmodel import SQLModel, create_engine, Session, select
+
+from app.config.settings import settings
 from app.telemetry import trace
 
 # Import local models
@@ -24,7 +28,6 @@ engine = create_engine(settings.genlogs_database_url, echo=False)
 
 class DatabaseUnavailable(Exception):
     """Raised when the database is unreachable or connection fails."""
-    pass
 
 
 def _session_with_dbcheck():
@@ -67,11 +70,10 @@ def get_city_by_place_id(place_id: str):
     # fast-path for mock ids without touching DB
     if place_id and place_id.startswith("mock:"):
         try:
-            import csv
-            import os
-
-            mappings_path = os.path.join(os.path.dirname(__file__), '..', '..', '..', '..', 'placeid_mappings.csv')
-            mappings_path = os.path.normpath(mappings_path)
+            base = os.path.dirname(__file__)
+            mappings_path = os.path.normpath(
+                os.path.join(base, '..', '..', '..', '..', 'placeid_mappings.csv')
+            )
             if os.path.exists(mappings_path):
                 with open(mappings_path, newline='', encoding='utf-8') as f:
                     reader = csv.DictReader(f)
@@ -84,9 +86,15 @@ def get_city_by_place_id(place_id: str):
                             state = parts[1] if len(parts) > 1 else ''
                             country = parts[2] if len(parts) > 2 else 'US'
                             # build a detached CityReference-like object
-                            return CityReference(place_id=place_id, name=name, state=state, country=country, normalized_label=f"{name}, {state}, {country}".lower())
-        except Exception:
-            # Fall back to DB lookup on any error
+                            return CityReference(
+                                place_id=place_id,
+                                name=name,
+                                state=state,
+                                country=country,
+                                normalized_label=f"{name}, {state}, {country}".lower(),
+                            )
+        except (OSError, csv.Error):
+            # Fall back to DB lookup on any error reading CSV
             pass
 
     try:
@@ -113,16 +121,13 @@ def suggest_cities(prefix: str, limit: int = 10) -> List[Dict]:
     # local runs don't strictly require a running Postgres instance.
     try:
         # If tests or runtime prefer mock/provider fallback, check the CSV first
-        if getattr(settings, "genlogs_prefer_mock_for_mock_ids", False) or True:
-            import csv
-            import os
-
-            # Search for placeid_mappings.csv in a few candidate locations relative
-            # to this file and repository root.
+        if getattr(settings, "genlogs_prefer_mock_for_mock_ids", False):
+            # Search for placeid_mappings.csv in candidate locations relative to this file
             candidates = []
             base = os.path.dirname(__file__)
-            # current provider package up to repo root
-            candidates.append(os.path.normpath(os.path.join(base, '..', '..', '..', '..', 'placeid_mappings.csv')))
+            candidates.append(
+                os.path.normpath(os.path.join(base, '..', '..', '..', '..', 'placeid_mappings.csv'))
+            )
             candidates.append(os.path.normpath(os.path.join(base, '..', '..', '..', 'placeid_mappings.csv')))
             candidates.append(os.path.normpath(os.path.join(base, '..', '..', 'placeid_mappings.csv')))
             candidates.append(os.path.normpath(os.path.join(base, '..', 'placeid_mappings.csv')))
@@ -136,7 +141,7 @@ def suggest_cities(prefix: str, limit: int = 10) -> List[Dict]:
                     break
 
             if mapping_path:
-                with open(mapping_path, newline='') as f:
+                with open(mapping_path, newline='', encoding='utf-8') as f:
                     reader = csv.DictReader(f)
                     for row in reader:
                         label = (row.get('label') or '').strip()
@@ -144,12 +149,16 @@ def suggest_cities(prefix: str, limit: int = 10) -> List[Dict]:
                             continue
                         norm = label.lower()
                         if norm.startswith(p):
-                            parts = [p.strip() for p in label.split(',')]
+                            parts = [part.strip() for part in label.split(',')]
                             name = parts[0] if parts else ''
                             state = parts[1] if len(parts) > 1 else ''
                             country = parts[2] if len(parts) > 2 else 'US'
                             items.append({
-                                "id": row.get('old_place_id') or row.get('new_place_id') or row.get('city_id'),
+                                "id": (
+                                    row.get('old_place_id')
+                                    or row.get('new_place_id')
+                                    or row.get('city_id')
+                                ),
                                 "label": f"{name}, {state}, {country}",
                                 "city": name,
                                 "state": state,
@@ -157,7 +166,7 @@ def suggest_cities(prefix: str, limit: int = 10) -> List[Dict]:
                             })
                             if len(items) >= limit:
                                 return items
-    except Exception:
+    except (OSError, csv.Error):
         # If CSV fallback fails, continue to DB-backed lookup below
         items = []
 
@@ -183,7 +192,7 @@ def suggest_cities(prefix: str, limit: int = 10) -> List[Dict]:
                         "country": r.country,
                     }
                 )
-    except sqlalchemy.exc.OperationalError as exc:
+    except sqlalchemy.exc.OperationalError:
         # If DB unavailable and we have no CSV results, return an empty list.
         # City suggestion should be resilient for clients even when DB is down.
         if items:
