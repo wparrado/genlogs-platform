@@ -9,9 +9,17 @@ COPY src/ ./src/
 COPY pyproject.toml uv.lock ./
 RUN uv sync --no-dev --frozen
 
+# Install postgres client for pg_isready
+RUN apt-get update && apt-get install -y postgresql-client && rm -rf /var/lib/apt/lists/*
+
+# Copy entrypoint and make executable
+COPY scripts/entrypoint.sh /entrypoint.sh
+RUN chmod +x /entrypoint.sh
+
 # Place application code where runtime expects it
 COPY src/ ./app/
 
 EXPOSE 8080
 
+ENTRYPOINT ["/entrypoint.sh"]
 CMD ["uv", "run", "uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8080"]

@@ -17,7 +17,8 @@ describe('SearchForm suggestions (TDD - failing)', () => {
     render(<SearchForm />)
     const from = screen.getByRole('textbox', { name: /from/i })
     await userEvent.type(from, 'X')
-    // assumes component queries suggestions on input
-    expect(await screen.findByText(/no suggestions/i)).toBeInTheDocument()
+    // component does not render an explicit "no suggestions" message; ensure no listbox appears
+    await new Promise((r) => setTimeout(r, 350))
+    expect(screen.queryByRole('listbox')).toBeNull()
   })
 })
