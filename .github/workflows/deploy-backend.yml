@@ -138,7 +138,8 @@ jobs:
             echo "Attempt $attempt: describe WITHOUT impersonation"
             OUT=$(gcloud sql instances describe genlogs-db --project=${{ env.PROJECT_ID }} --format='get(connectionName)' 2>&1 || true)
             echo "Output (no-impersonate):<<OUTPUT\n$OUT\nOUTPUT"
-            if echo "$OUT" | grep -q "projects/" || echo "$OUT" | grep -q "/instances/"; then
+            # Accept common connectionName formats (e.g., project:region:instance) or any non-error output
+            if [ -n "$OUT" ] && ! echo "$OUT" | grep -qiE "error|permission_denied|permission denied|not found"; then
               INSTANCE_CONN="$OUT"
               echo "INSTANCE_CONN=$INSTANCE_CONN" >> $GITHUB_ENV
               echo "Found INSTANCE_CONN=$INSTANCE_CONN"
@@ -149,7 +150,7 @@ jobs:
               echo "Attempt $attempt: describe WITH impersonation $SA"
               OUT=$(gcloud sql instances describe genlogs-db --project=${{ env.PROJECT_ID }} --format='get(connectionName)' --impersonate-service-account="$SA" 2>&1 || true)
               echo "Output (impersonate):<<OUTPUT\n$OUT\nOUTPUT"
-              if echo "$OUT" | grep -q "projects/" || echo "$OUT" | grep -q "/instances/"; then
+              if [ -n "$OUT" ] && ! echo "$OUT" | grep -qiE "error|permission_denied|permission denied|not found"; then
                 INSTANCE_CONN="$OUT"
                 echo "INSTANCE_CONN=$INSTANCE_CONN" >> $GITHUB_ENV
                 echo "Found INSTANCE_CONN=$INSTANCE_CONN"
