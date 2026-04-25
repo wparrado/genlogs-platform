@@ -3,7 +3,7 @@
 const isDev = typeof process !== 'undefined' && (process as any).env && (((process as any).env.NODE_ENV === 'development') || (process as any).env.VITE_DEV === 'true')
 const BASE_URL: string = (globalThis as any).__VITE_API_BASE_URL__
   ?? (typeof process !== 'undefined' ? (process.env.VITE_API_BASE_URL as string | undefined) : undefined)
-  ?? (isDev ? '' : 'http://localhost:8000')
+  ?? (isDev ? '' : 'https://genlogs-backend-347212169781.us-central1.run.app')
 
 async function parseBody(response: Response) {
   const ct = response.headers.get('content-type') || ''
