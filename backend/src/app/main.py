@@ -1,16 +1,31 @@
 """GenLogs backend application entry point."""
-from fastapi import FastAPI, Request
+import os
+import json
+
+from fastapi import FastAPI, Request, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+from fastapi.exceptions import RequestValidationError
+from starlette.responses import Response
+
 from app.api.routes import health, search, cities, metrics
 from app.logging_config import configure_logging
 from app.providers.logging_provider import get_logger
-from app.utils.redaction import redact_pii, redact_text_pii, redact_headers
-from starlette.responses import Response
+from app.utils.redaction import (
+    redact_pii,
+    redact_text_pii,
+    redact_headers,
+)
+from app.utils.request_id import (
+    set_request_id,
+    generate_request_id,
+    reset_request_id,
+)
 
 # Configure structured logging as early as possible
 configure_logging()
 from app.telemetry import init_tracing, get_tracer, instrument_app
+
 # Initialize tracing (no-op if OpenTelemetry not installed)
 init_tracing()
 logger = get_logger("app")
@@ -27,16 +42,14 @@ app = FastAPI(title="GenLogs API", version="0.1.0")
 # Attempt to auto-instrument FastAPI/requests/SQLAlchemy when OTEL is available
 try:
     from app.providers.db.db import engine as _db_engine
-except Exception:
+except ImportError:
     _db_engine = None
 
 try:
     instrument_app(app, engine=_db_engine)
-except Exception:
-    # non-fatal
-    pass
-
-import os
+except Exception as exc:
+    # non-fatal - instrumentation best-effort
+    logger.exception("instrumentation failed", exc_info=exc)
 
 # Configure CORS origins from environment for safer production settings.
 # Format: comma-separated list, e.g. "https://site1.example,https://site2.example"
@@ -58,8 +71,13 @@ app.add_middleware(
 
 @app.middleware("http")
 async def log_requests(request: Request, call_next):
+    """HTTP middleware that attaches request id, logs the request/response, and instruments tracing.
+
+    This middleware ensures a request id exists for logging, starts a root
+    tracing span (when available), redacts sensitive fields from bodies and
+    headers, and logs request start/end events.
+    """
     # Determine or generate a request id and bind it to the context for all log records
-    from app.utils.request_id import set_request_id, generate_request_id, reset_request_id
 
     incoming = request.headers.get("x-request-id") or request.headers.get("X-Request-ID")
     req_id = incoming or generate_request_id()
@@ -71,12 +89,10 @@ async def log_requests(request: Request, call_next):
     # Enter the span context and try to retrieve the underlying span object
     try:
         span = span_ctx.__enter__()
-    except Exception:
-        try:
-            # Some tracer implementations return a contextmanager whose __enter__ returns None
-            span = None
-        except Exception:
-            span = None
+    except Exception as exc:
+        # Some tracer implementations may raise on __enter__ — treat as no-op
+        logger.debug("span.__enter__ failed, treating as no-op", exc_info=exc)
+        span = None
 
     # Attach attributes: request_id and basic request info
     try:
@@ -92,7 +108,8 @@ async def log_requests(request: Request, call_next):
                 try:
                     user_obj = request.state.user
                     user_id = getattr(user_obj, "id", None) or getattr(user_obj, "user_id", None)
-                except Exception:
+                except Exception as exc:
+                    logger.debug("failed to get user id from request.state.user", exc_info=exc)
                     user_id = None
             if user_id:
                 span.set_attribute("enduser.id", str(user_id))
@@ -106,15 +123,20 @@ async def log_requests(request: Request, call_next):
         body_json = None
         if body_bytes:
             try:
-                import json
-
                 body_json = json.loads(body_bytes.decode("utf-8"))
-            except Exception:
+            except (ValueError, json.JSONDecodeError, UnicodeDecodeError):
                 body_json = None
 
         redacted_req_body = redact_pii(body_json) if body_json is not None else None
         redacted_headers = redact_headers(dict(request.headers))
-        logger.info("request.start", extra={"method": request.method, "path": request.url.path, "body": redacted_req_body, "headers": redacted_headers, "request_id": req_id})
+        extra_start = {
+            "method": request.method,
+            "path": request.url.path,
+            "body": redacted_req_body,
+            "headers": redacted_headers,
+            "request_id": req_id,
+        }
+        logger.info("request.start", extra=extra_start)
 
         response = await call_next(request)
 
@@ -139,19 +161,17 @@ async def log_requests(request: Request, call_next):
                 try:
                     if span is not None and hasattr(span, "set_attribute"):
                         span.set_attribute("http.status_code", int(response.status_code))
-                except Exception:
-                    pass
+                except Exception as exc:
+                    logger.debug("failed to set http.status_code on span", exc_info=exc)
                 redacted_resp = None
                 try:
-                    import json
-
                     resp_text = resp_body.decode("utf-8")
                     try:
                         resp_json = json.loads(resp_text)
                         redacted_resp = redact_pii(resp_json)
-                    except Exception:
+                    except (ValueError, json.JSONDecodeError):
                         redacted_resp = redact_text_pii(resp_text)
-                except Exception:
+                except (UnicodeDecodeError, OSError):
                     redacted_resp = None
 
                 logger.warning("response.error", extra={
@@ -166,10 +186,16 @@ async def log_requests(request: Request, call_next):
                 # attach status to span for successful responses as well
                 if span is not None and hasattr(span, "set_attribute"):
                     span.set_attribute("http.status_code", int(response.status_code))
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.debug("failed to set http.status_code on span", exc_info=exc)
 
-            logger.info("request.end", extra={"method": request.method, "path": request.url.path, "status_code": response.status_code, "headers": redact_headers(dict(response.headers))})
+            extra_end = {
+                "method": request.method,
+                "path": request.url.path,
+                "status_code": response.status_code,
+                "headers": redact_headers(dict(response.headers)),
+            }
+            logger.info("request.end", extra=extra_end)
             return new_response
         else:
             # Do not buffer binary/streaming responses — just log headers and status
@@ -178,8 +204,8 @@ async def log_requests(request: Request, call_next):
             try:
                 if span is not None and hasattr(span, "set_attribute"):
                     span.set_attribute("http.status_code", int(response.status_code))
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.debug("failed to set http.status_code on span", exc_info=exc)
 
             logger.info("request.end", extra={
                 "method": request.method,
@@ -196,12 +222,12 @@ async def log_requests(request: Request, call_next):
         # Always clear context var to avoid leaking request id across requests
         try:
             reset_request_id(token)
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.debug("failed to reset request id", exc_info=exc)
         try:
             span_ctx.__exit__(None, None, None)
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.debug("span_ctx.__exit__ failed", exc_info=exc)
 
 
 app.include_router(health.router)
@@ -210,12 +236,13 @@ app.include_router(cities.router, prefix="/api")
 app.include_router(metrics.router, prefix="/api")
 
 
-from fastapi import HTTPException
-from fastapi.exceptions import RequestValidationError
-
-
 @app.exception_handler(HTTPException)
 async def http_exception_handler(request: Request, exc: HTTPException):
+    """Handle HTTPException by logging and returning a JSON response.
+
+    The handler logs the HTTP exception details and returns a JSON payload
+    with the provided detail.
+    """
     # Log HTTP exceptions (e.g., 400) including the provided detail/reason.
     logger.warning("http.exception", extra={
         "method": request.method,
