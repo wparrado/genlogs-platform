@@ -40,12 +40,79 @@ jobs:
       - name: Build and push image (Cloud Build)
         working-directory: backend
         run: |
-          gcloud builds submit --tag ${{ env.REGION }}-docker.pkg.dev/${{ env.PROJECT_ID }}/${{ env.REPOSITORY }}/${{ env.IMAGE }}:${{ github.sha }} --project=${{ env.PROJECT_ID }}
+          set -euo pipefail
+          REPO_PATH="${{ env.REGION }}-docker.pkg.dev/${{ env.PROJECT_ID }}/${{ env.REPOSITORY }}/${{ env.IMAGE }}"
+          IMAGE_TAG="${{ github.sha }}"
+          IMAGE="$REPO_PATH:$IMAGE_TAG"
+          echo "Starting Cloud Build for $IMAGE"
+
+          # Submit build (timeout 5m). gcloud may be unable to stream logs; allow non-zero and poll.
+          gcloud builds submit --tag "$IMAGE" --project="${{ env.PROJECT_ID }}" --timeout=300s --quiet || echo "gcloud builds submit returned non-zero; continuing and polling build status"
+
+          # Wait for the build that produced this image to complete (timeout ~5 minutes)
+          BUILD_ID=""
+          for i in $(seq 1 60); do
+            BUILD_ID=$(gcloud builds list --project="${{ env.PROJECT_ID }}" --filter="images:$IMAGE" --limit=1 --format="value(id)") || true
+            if [ -n "$BUILD_ID" ]; then
+              STATUS=$(gcloud builds describe "$BUILD_ID" --project="${{ env.PROJECT_ID }}" --format="value(status)") || true
+              echo "Found build $BUILD_ID status=$STATUS"
+              if [ "$STATUS" = "SUCCESS" ]; then
+                echo "Build succeeded"
+                break
+              fi
+              if [ "$STATUS" = "FAILURE" ] || [ "$STATUS" = "CANCELLED" ] || [ "$STATUS" = "TIMEOUT" ]; then
+                echo "Build failed with status $STATUS"
+                exit 1
+              fi
+            else
+              echo "No build found yet for image. Retrying... ($i)"
+            fi
+            sleep 5
+          done
+          if [ -z "$BUILD_ID" ]; then
+            echo "Timed out waiting for build to register; failing"
+            exit 1
+          fi
+
+          # Resolve immutable image digest
+          DIGEST="$(gcloud artifacts docker images list "$REPO_PATH" --project="${{ env.PROJECT_ID }}" --format='value(digest)' --sort-by='~createTime' --limit=1)"
+          if [ -z "$DIGEST" ]; then
+            echo "Failed to resolve image digest for $REPO_PATH" >&2
+            exit 1
+          fi
+          IMAGE_REF="$REPO_PATH@$DIGEST"
+          echo "IMAGE_REF=$IMAGE_REF" >> $GITHUB_ENV
+
+      - name: Get Cloud SQL connection name
+        id: sql
+        run: |
+          set -euo pipefail
+          INSTANCE_CONN=$(gcloud sql instances describe genlogs-db --project=${{ env.PROJECT_ID }} --format='get(connectionName)')
+          if [ -z "$INSTANCE_CONN" ]; then
+            echo "Could not get Cloud SQL instance connection name" >&2
+            exit 1
+          fi
+          echo "INSTANCE_CONN=$INSTANCE_CONN" >> $GITHUB_ENV
 
       - name: Deploy to Cloud Run
         env:
           CORS_ORIGINS: "https://genlogs-4e471.web.app,https://genlogs-4e471.firebaseapp.com"
         run: |
+          set -euo pipefail
+          echo "Deploying ${{ env.SERVICE_NAME }} to Cloud Run with image $IMAGE_REF"
           gcloud run deploy ${{ env.SERVICE_NAME }} \
-            --image=${{ env.REGION }}-docker.pkg.dev/${{ env.PROJECT_ID }}/${{ env.REPOSITORY }}/${{ env.IMAGE }}:${{ github.sha }} \
-            --region=${{ env.REGION }} --platform=managed --allow-unauthenticated --set-env-vars GENLOGS_CORS_ORIGINS="${{ env.CORS_ORIGINS }}" --project=${{ env.PROJECT_ID }}
+            --image="$IMAGE_REF" \
+            --region=${{ env.REGION }} --platform=managed --allow-unauthenticated \
+            --add-cloudsql-instances="$INSTANCE_CONN" \
+            --set-secrets=DB_PASSWORD=genlogs-db-pass:latest \
+            --set-env-vars=DB_HOST="/cloudsql/$INSTANCE_CONN",DB_PORT=5432,POSTGRES_USER=postgres,GENLOGS_CORS_ORIGINS="${{ env.CORS_ORIGINS }}" \
+            --project=${{ env.PROJECT_ID }} --quiet
+
+      - name: Run migrations via Cloud Run Job (optional)
+        if: ${{ env.RUN_MIGRATIONS == 'true' }}
+        run: |
+          set -euo pipefail
+          echo "Creating and executing migration job"
+          # create is idempotent; ignore error if already exists
+          gcloud run jobs create genlogs-migrate-job --image="$IMAGE_REF" --region=${{ env.REGION }} --command="sh" --args='-c','alembic upgrade head' --project=${{ env.PROJECT_ID }} || true
+          gcloud run jobs execute genlogs-migrate-job --region=${{ env.REGION }} --project=${{ env.PROJECT_ID }} --wait
