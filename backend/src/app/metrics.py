@@ -47,13 +47,21 @@ def get(name: str) -> int:
 
 
 def reset() -> None:
-    """Reset in-memory counters and recreate Prometheus registry if used."""
-    global _registry, _prom_counters
+    """Reset in-memory counters and clean up Prometheus counters from the registry.
+
+    This avoids reassigning module-level registry variables and performs a
+    best-effort unregister of existing Prometheus collectors.
+    """
     with _lock:
         _inmem.clear()
-        if PROM_AVAILABLE:
-            _registry = CollectorRegistry()
-            _prom_counters = {}
+        if PROM_AVAILABLE and _registry is not None:
+            for counter in list(_prom_counters.values()):
+                try:
+                    _registry.unregister(counter)
+                except Exception:
+                    # best-effort cleanup; ignore failures
+                    pass
+            _prom_counters.clear()
 
 
 def prometheus_metrics_latest() -> Optional[bytes]:

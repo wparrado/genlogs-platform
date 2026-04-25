@@ -10,6 +10,9 @@ from __future__ import annotations
 from contextlib import contextmanager
 from typing import Callable, Any, Optional
 import os
+import logging
+
+logger = logging.getLogger(__name__)
 
 # Try to import OpenTelemetry; fall back to no-op
 try:
@@ -31,6 +34,39 @@ try:
     OTEL_AVAILABLE = True
 except ImportError:
     OTEL_AVAILABLE = False
+
+
+def _parse_headers(headers_env: Optional[str], otlp_headers: Optional[dict]) -> Optional[dict]:
+    """Parse OTLP headers from environment or use provided headers.
+
+    Returns a dict of headers or None if none provided.
+    """
+    if otlp_headers:
+        return otlp_headers
+    if not headers_env:
+        return None
+    hdrs = {}
+    for pair in headers_env.split(','):
+        if '=' in pair:
+            k, v = pair.split('=', 1)
+            hdrs[k.strip()] = v.strip()
+    return hdrs or None
+
+
+def _instantiate_otlp_exporter(endpoint: str, headers: Optional[dict]):
+    """Attempt to construct an OTLP exporter with endpoint and headers.
+
+    Falls back to a no-arg constructor if the first attempt fails.
+    """
+    try:
+        return OTLP_SPAN_EXPORTER(endpoint=endpoint, headers=headers)
+    except Exception as exc:
+        logger.exception("failed to instantiate OTLP_SPAN_EXPORTER with endpoint", exc_info=exc)
+        try:
+            return OTLP_SPAN_EXPORTER()
+        except Exception as exc2:
+            logger.exception("failed to instantiate OTLP_SPAN_EXPORTER without endpoint", exc_info=exc2)
+            return None
 
 
 def init_tracing(service_name: str = "genlogs", otlp_endpoint: Optional[str] = None, otlp_headers: Optional[dict] = None) -> None:
@@ -62,17 +98,7 @@ def init_tracing(service_name: str = "genlogs", otlp_endpoint: Optional[str] = N
 
     exporter = None
     if endpoint and OTLP_SPAN_EXPORTER is not None:
-        try:
-            # prefer HTTP constructor that accepts endpoint and headers
-            exporter = OTLP_SPAN_EXPORTER(endpoint=endpoint, headers=headers)
-        except Exception as exc:
-            import logging
-            logging.getLogger(__name__).exception("failed to instantiate OTLP_SPAN_EXPORTER with endpoint", exc_info=exc)
-            try:
-                exporter = OTLP_SPAN_EXPORTER()
-            except Exception as exc2:
-                logging.getLogger(__name__).exception("failed to instantiate OTLP_SPAN_EXPORTER without endpoint", exc_info=exc2)
-                exporter = None
+        exporter = _instantiate_otlp_exporter(endpoint, headers)
 
     if exporter is None:
         exporter = ConsoleSpanExporter()
@@ -93,14 +119,12 @@ def instrument_app(app: Any, engine: Any = None) -> bool:
     try:
         FastAPIInstrumentor().instrument_app(app)
     except Exception as exc:
-        import logging
-        logging.getLogger(__name__).exception("FastAPIInstrumentor.instrument_app failed", exc_info=exc)
+        logger.exception("FastAPIInstrumentor.instrument_app failed", exc_info=exc)
 
     try:
         RequestsInstrumentor().instrument()
     except Exception as exc:
-        import logging
-        logging.getLogger(__name__).exception("RequestsInstrumentor.instrument failed", exc_info=exc)
+        logger.exception("RequestsInstrumentor.instrument failed", exc_info=exc)
 
     if engine is not None:
         try:
@@ -110,10 +134,10 @@ def instrument_app(app: Any, engine: Any = None) -> bool:
             try:
                 # older API: provide engine directly
                 SQLAlchemyInstrumentor().instrument()
-            except Exception:
-                pass
-        except Exception:
-            pass
+            except Exception as exc:
+                logger.debug("SQLAlchemyInstrumentor.instrument failed (old API)", exc_info=exc)
+        except Exception as exc:
+            logger.debug("SQLAlchemyInstrumentor.instrument failed", exc_info=exc)
 
     return True
 
@@ -178,9 +202,8 @@ def trace(span_name: str | None = None) -> Callable:
         try:
             wrapped.__name__ = fn.__name__
             wrapped.__doc__ = fn.__doc__
-        except Exception:
-            # Ignore metadata preservation failures
-            pass
+        except Exception as exc:
+            logger.debug("failed to preserve metadata", exc_info=exc)
         return wrapped
 
     return decorator

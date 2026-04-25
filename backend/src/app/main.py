@@ -21,10 +21,10 @@ from app.utils.request_id import (
     generate_request_id,
     reset_request_id,
 )
+from app.telemetry import init_tracing, get_tracer, instrument_app
 
 # Configure structured logging as early as possible
 configure_logging()
-from app.telemetry import init_tracing, get_tracer, instrument_app
 
 # Initialize tracing (no-op if OpenTelemetry not installed)
 init_tracing()
@@ -71,78 +71,35 @@ app.add_middleware(
 
 @app.middleware("http")
 async def log_requests(request: Request, call_next):
-    """Top-level HTTP middleware orchestrating request/response logging and tracing.
+    """HTTP middleware that attaches request id, logs the request/response, and instruments tracing.
 
-    This function delegates parsing, redaction and response handling to helpers
-    to keep the control flow simple and reduce local variable churn.
+    This middleware ensures a request id exists for logging, starts a root
+    tracing span (when available), redacts sensitive fields from bodies and
+    headers, and logs request start/end events.
     """
+    # Determine or generate a request id and bind it to the context for all log records
 
     incoming = request.headers.get("x-request-id") or request.headers.get("X-Request-ID")
     req_id = incoming or generate_request_id()
     token = set_request_id(req_id)
 
+    # Start a root span for this incoming HTTP request (no-op if OTEL not installed)
     span_ctx = get_tracer("http.server").start_as_current_span(f"{request.method} {request.url.path}")
-    span = _enter_span(span_ctx)
-
-    _attach_span_attrs_safe(span, req_id, request)
-
+    span = None
+    # Enter the span context and try to retrieve the underlying span object
     try:
-        body_json = await _read_request_body_safe(request)
-        redacted_req_body = redact_pii(body_json) if body_json is not None else None
-        redacted_headers = redact_headers(dict(request.headers))
-        logger.info("request.start", extra={"method": request.method, "path": request.url.path, "body": redacted_req_body, "headers": redacted_headers, "request_id": req_id})
+        span = span_ctx.__enter__()
+    except Exception as exc:
+        # Some tracer implementations may raise on __enter__ — treat as no-op
+        logger.debug("span.__enter__ failed, treating as no-op", exc_info=exc)
+        span = None
 
-        response = await call_next(request)
-
-        content_type = (response.headers.get("content-type") or "").split(";")[0].lower()
-        should_buffer = ("json" in content_type) or content_type.startswith("text/")
-
-        if should_buffer:
-            return await _handle_buffered_response(response, request, req_id, span)
-        else:
-            return _handle_nonbuffered_response(response, request, req_id, span)
-
-    except Exception:
-        logger.exception("unhandled.exception", extra={"method": request.method, "path": request.url.path})
-        return JSONResponse(status_code=500, content={"detail": "internal server error"})
-    finally:
-        # Always clear context var to avoid leaking request id across requests
-        try:
-            reset_request_id(token)
-        except Exception:
-            pass
-        try:
-            span_ctx.__exit__(None, None, None)
-        except Exception:
-            pass
-
-
-def _enter_span(span_ctx):
-    """Enter tracer span context and return span object if available.
-
-    Some tracer implementations return None from __enter__ so this helper
-    normalizes to either a span object or None.
-    """
-    try:
-        return span_ctx.__enter__()
-    except Exception:
-        try:
-            return None
-        except Exception:
-            return None
-
-
-def _attach_span_attrs_safe(span, req_id: str, request: Request) -> None:
-    """Attach common attributes to the span if supported. Swallows errors.
-
-    Attempts to capture request id, method, path and enduser id when available.
-    """
+    # Attach attributes: request_id and basic request info
     try:
         if span is not None and hasattr(span, "set_attribute"):
             span.set_attribute("request.id", req_id)
             span.set_attribute("http.method", request.method)
             span.set_attribute("http.target", request.url.path)
-
             # attempt to capture user id if available
             user_id = None
             if "x-user-id" in request.headers:
@@ -151,98 +108,131 @@ def _attach_span_attrs_safe(span, req_id: str, request: Request) -> None:
                 try:
                     user_obj = request.state.user
                     user_id = getattr(user_obj, "id", None) or getattr(user_obj, "user_id", None)
-                except Exception:
+                except Exception as exc:
+                    logger.debug("failed to get user id from request.state.user", exc_info=exc)
                     user_id = None
             if user_id:
                 span.set_attribute("enduser.id", str(user_id))
-    except Exception:
+    except Exception as exc:
         # non-fatal
-        pass
+        logger.debug("span attribute attachment failed", exc_info=exc)
 
-
-async def _read_request_body_safe(request: Request):
-    """Read request body and return parsed JSON when possible.
-
-    Returns None if body empty or parsing fails.
-    """
     try:
+        # Read and attempt to parse request body for logging (may be empty)
         body_bytes = await request.body()
-        if not body_bytes:
-            return None
-        try:
-            return json.loads(body_bytes.decode("utf-8"))
-        except (ValueError, json.JSONDecodeError, UnicodeDecodeError):
-            return None
-    except Exception:
-        return None
-
-
-async def _handle_buffered_response(response: Response, request: Request, req_id: str, span):
-    """Buffer response body, redact when necessary, log and return a rebuilt Response.
-
-    Preserves headers and media_type.
-    """
-    resp_body = b""
-    async for chunk in response.body_iterator:
-        resp_body += chunk
-
-    new_response = Response(content=resp_body, status_code=response.status_code, headers=dict(response.headers), media_type=response.media_type)
-    new_response.headers["X-Request-ID"] = req_id
-
-    # If error status, attempt to log/redact response body
-    if response.status_code >= 400:
-        try:
-            if span is not None and hasattr(span, "set_attribute"):
-                span.set_attribute("http.status_code", int(response.status_code))
-        except Exception:
-            pass
-
-        redacted_resp = None
-        try:
-            resp_text = resp_body.decode("utf-8")
+        body_json = None
+        if body_bytes:
             try:
-                resp_json = json.loads(resp_text)
-                redacted_resp = redact_pii(resp_json)
-            except (ValueError, json.JSONDecodeError):
-                redacted_resp = redact_text_pii(resp_text)
-        except (UnicodeDecodeError, OSError):
-            redacted_resp = None
+                body_json = json.loads(body_bytes.decode("utf-8"))
+            except (ValueError, json.JSONDecodeError, UnicodeDecodeError):
+                body_json = None
 
-        logger.warning("response.error", extra={
+        redacted_req_body = redact_pii(body_json) if body_json is not None else None
+        redacted_headers = redact_headers(dict(request.headers))
+        extra_start = {
             "method": request.method,
             "path": request.url.path,
-            "status_code": response.status_code,
-            "response": redacted_resp,
-            "headers": redact_headers(dict(response.headers)),
-        })
+            "body": redacted_req_body,
+            "headers": redacted_headers,
+            "request_id": req_id,
+        }
+        logger.info("request.start", extra=extra_start)
 
-    try:
-        if span is not None and hasattr(span, "set_attribute"):
-            span.set_attribute("http.status_code", int(response.status_code))
-    except Exception:
-        pass
+        response = await call_next(request)
 
-    logger.info("request.end", extra={"method": request.method, "path": request.url.path, "status_code": response.status_code, "headers": redact_headers(dict(response.headers))})
-    return new_response
+        # Decide whether to buffer response body based on content-type
+        content_type = (response.headers.get("content-type") or "").split(";")[0].lower()
+        should_buffer = ("json" in content_type) or content_type.startswith("text/")
 
+        if should_buffer:
+            # Capture response body (buffer it) so we can inspect and re-create the response
+            resp_body = b""
+            async for chunk in response.body_iterator:
+                resp_body += chunk
 
-def _handle_nonbuffered_response(response: Response, request: Request, req_id: str, span):
-    """Handle non-buffered (binary/streaming) responses: add headers and log summary."""
-    response.headers["X-Request-ID"] = req_id
-    try:
-        if span is not None and hasattr(span, "set_attribute"):
-            span.set_attribute("http.status_code", int(response.status_code))
-    except Exception:
-        pass
+            # Rebuild response to return the same content to the client
+            new_response = Response(
+                content=resp_body,
+                status_code=response.status_code,
+                headers=dict(response.headers),
+                media_type=response.media_type,
+            )
+            # Attach request id header so callers can correlate
+            new_response.headers["X-Request-ID"] = req_id
 
-    logger.info("request.end", extra={
-        "method": request.method,
-        "path": request.url.path,
-        "status_code": response.status_code,
-        "headers": redact_headers(dict(response.headers)),
-        "body": "[omitted]",
-    })
-    return response
+            # If error status, attempt to log/redact response body
+            if response.status_code >= 400:
+                # attach status to span
+                try:
+                    if span is not None and hasattr(span, "set_attribute"):
+                        span.set_attribute("http.status_code", int(response.status_code))
+                except Exception as exc:
+                    logger.debug("failed to set http.status_code on span", exc_info=exc)
+                redacted_resp = None
+                try:
+                    resp_text = resp_body.decode("utf-8")
+                    try:
+                        resp_json = json.loads(resp_text)
+                        redacted_resp = redact_pii(resp_json)
+                    except (ValueError, json.JSONDecodeError):
+                        redacted_resp = redact_text_pii(resp_text)
+                except (UnicodeDecodeError, OSError):
+                    redacted_resp = None
+
+                logger.warning("response.error", extra={
+                    "method": request.method,
+                    "path": request.url.path,
+                    "status_code": response.status_code,
+                    "response": redacted_resp,
+                    "headers": redact_headers(dict(response.headers)),
+                })
+
+            try:
+                # attach status to span for successful responses as well
+                if span is not None and hasattr(span, "set_attribute"):
+                    span.set_attribute("http.status_code", int(response.status_code))
+            except Exception as exc:
+                logger.debug("failed to set http.status_code on span", exc_info=exc)
+
+            extra_end = {
+                "method": request.method,
+                "path": request.url.path,
+                "status_code": response.status_code,
+                "headers": redact_headers(dict(response.headers)),
+            }
+            logger.info("request.end", extra=extra_end)
+            return new_response
+        else:
+            # Do not buffer binary/streaming responses — just log headers and status
+            # Attach request id header for correlation
+            response.headers["X-Request-ID"] = req_id
+            try:
+                if span is not None and hasattr(span, "set_attribute"):
+                    span.set_attribute("http.status_code", int(response.status_code))
+            except Exception as exc:
+                logger.debug("failed to set http.status_code on span", exc_info=exc)
+
+            logger.info("request.end", extra={
+                "method": request.method,
+                "path": request.url.path,
+                "status_code": response.status_code,
+                "headers": redact_headers(dict(response.headers)),
+                "body": "[omitted]",
+            })
+            return response
+    except Exception as exc:
+        logger.exception("unhandled.exception", extra={"method": request.method, "path": request.url.path}, exc_info=exc)
+        return JSONResponse(status_code=500, content={"detail": "internal server error"})
+    finally:
+        # Always clear context var to avoid leaking request id across requests
+        try:
+            reset_request_id(token)
+        except Exception as exc:
+            logger.debug("failed to reset request id", exc_info=exc)
+        try:
+            span_ctx.__exit__(None, None, None)
+        except Exception as exc:
+            logger.debug("span_ctx.__exit__ failed", exc_info=exc)
 
 
 app.include_router(health.router)

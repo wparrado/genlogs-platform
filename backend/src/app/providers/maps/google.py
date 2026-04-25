@@ -1,7 +1,28 @@
 """Google Routes provider (ComputeRoutes).
 
 This provider uses the Google Routes API (ComputeRoutes endpoint) via HTTP POST
-... (docstring unchanged) ...
+to request route information. It accepts place-like identifiers (place_id or
+address). For place IDs pass values like "place_id:ChI..." or a raw Place ID
+— the provider normalizes both into the ComputeRoutes waypoint format.
+
+Behavior:
+- Calls https://routes.googleapis.com/directions/v2:computeRoutes with
+  computeAlternativeRoutes = true.
+- Requests fields via X-Goog-FieldMask: routes.duration,routes.distanceMeters,routes.description,routes.polyline.encodedPolyline.
+  The provider decodes encodedPolyline into pathPayload for downstream consumers.
+- Route IDs are derived strictly from routes.description when present; summary
+  is no longer used for ID generation. If description is missing a google_{idx}
+  fallback id is used.
+- Origin/destination are sent as waypoint.placeId when possible; falls back to
+  address strings when appropriate.
+- If no API key is configured the provider raises RuntimeError so callers can
+  fallback to an alternate provider.
+- A simple in-process circuit breaker and a retry/backoff loop are still used.
+
+Note: For advanced truck-routing (dimensions, axle count, restrictions) add
+truckInfo/vehicleInfo to the request body or migrate to the gRPC client for
+full route options. The provider intentionally avoids pulling extra deps so
+it keeps using requests for HTTP calls.
 """
 
 from __future__ import annotations
@@ -45,7 +66,7 @@ class SimpleCircuitBreaker:
             # success: reset failure count
             self.failures = 0
             return res
-        except Exception:
+        except Exception as exc:
             self.failures += 1
             if self.failures >= self.failure_threshold:
                 self.opened_at = time.time()
@@ -92,7 +113,10 @@ def _call_google_directions(origin: str, destination: str, api_key: str) -> Dict
         "Content-Type": "application/json",
         "X-Goog-Api-Key": api_key,
         # Request duration, distance, description and encoded polyline
-        "X-Goog-FieldMask": "routes.duration,routes.distanceMeters,routes.description,routes.polyline.encodedPolyline",
+        "X-Goog-FieldMask": (
+            "routes.duration,routes.distanceMeters,"
+            "routes.description,routes.polyline.encodedPolyline"
+        ),
     }
 
     r = requests.post(url, json=payload, headers=headers, timeout=5)
@@ -143,76 +167,6 @@ def _decode_polyline(polyline_str: str):
     return coords
 
 
-def _normalize_place_param(p: Optional[str]) -> Optional[str]:
-    """Normalize a place identifier to the 'place_id:...' form when appropriate."""
-    if not p:
-        return p
-    if isinstance(p, str) and p.startswith("place_id:"):
-        return p
-    if isinstance(p, str) and p.startswith("ChI"):
-        return f"place_id:{p}"
-    return p
-
-
-def _extract_route_info(route: Dict, idx: int) -> Dict:
-    """Convert a raw Google route object into the simplified internal schema.
-
-    Extracts duration, distance, localized text and decodes encoded polylines.
-    """
-    summary = route.get("summary") or ""
-    duration = None
-    distance = None
-    duration_text = ""
-    distance_text = ""
-
-    # Prefer route-level duration and distance (ComputeRoutes shape)
-    route_duration = route.get("duration")
-    if route_duration is not None:
-        if isinstance(route_duration, str) and route_duration.endswith("s"):
-            try:
-                duration = int(float(route_duration[:-1]))
-                duration_text = route_duration
-            except Exception:
-                duration = None
-                duration_text = str(route_duration)
-        elif isinstance(route_duration, dict):
-            duration = route_duration.get("value") or route_duration.get("seconds")
-            duration_text = route_duration.get("text", "")
-
-    distance = route.get("distanceMeters") or None
-
-    # Fallback to legs localized text if present
-    legs = route.get("legs", [])
-    if legs and isinstance(legs, list) and len(legs) > 0:
-        l0 = legs[0]
-        if isinstance(l0.get("duration"), dict):
-            duration_text = l0.get("duration").get("text", duration_text)
-        if isinstance(l0.get("distance"), dict):
-            distance_text = l0.get("distance").get("text", distance_text)
-
-    # Try to extract encoded polyline from route.polyline.encodedPolyline
-    path_payload = None
-    poly = route.get("polyline") or {}
-    if isinstance(poly, dict):
-        encoded = poly.get("encodedPolyline") or poly.get("encoded_polyline") or None
-        if encoded:
-            path_payload = _decode_polyline(encoded)
-
-    route_desc = route.get("description") or f"google_{idx}"
-    sanitized_route_id = re.sub(r'[^A-Za-z0-9_\-]', '', route_desc.replace(' ', '-'))
-
-    return {
-        "id": sanitized_route_id,
-        "summary": summary,
-        "duration": duration,
-        "distance": distance,
-        "durationText": duration_text,
-        "distanceText": distance_text,
-        "mapEmbedUrl": None,
-        "pathPayload": path_payload,
-    }
-
-
 @trace()
 def get_routes_for_pair(from_place_id: str, to_place_id: str) -> List[Dict]:
     """Attempt to fetch route options from Google Directions API.
@@ -232,12 +186,77 @@ def get_routes_for_pair(from_place_id: str, to_place_id: str) -> List[Dict]:
     for attempt in range(3):
         try:
             metrics_inc("maps_google_attempts")
+            # Google Directions accepts place_id:PLACE_ID to reference Google Place IDs.
+            def _normalize_place_param(p: Optional[str]) -> Optional[str]:
+                if not p:
+                    return p
+                if isinstance(p, str) and p.startswith("place_id:"):
+                    return p
+                # Common Google Place IDs begin with 'ChI' — prefix these so Directions treats them as place IDs
+                if isinstance(p, str) and p.startswith("ChI"):
+                    return f"place_id:{p}"
+                return p
             origin_param = _normalize_place_param(from_place_id)
             destination_param = _normalize_place_param(to_place_id)
             payload = _circuit.call(_call_google_directions, origin_param, destination_param, api_key)
+            routes = []
+            for idx, route in enumerate(payload.get("routes", [])[:3]):
+                # Derive a compact representation similar to mocks
+                summary = route.get("summary") or ""
+                duration = None
+                distance = None
+                duration_text = ""
+                distance_text = ""
 
-            routes = [_extract_route_info(route, idx) for idx, route in enumerate(payload.get("routes", [])[:3])]
+                # Prefer route-level duration and distance (ComputeRoutes shape)
+                route_duration = route.get("duration")
+                if route_duration is not None:
+                    if isinstance(route_duration, str) and route_duration.endswith("s"):
+                        try:
+                            duration = int(float(route_duration[:-1]))
+                            duration_text = route_duration
+                        except (ValueError, TypeError):
+                            duration = None
+                            duration_text = str(route_duration)
+                    elif isinstance(route_duration, dict):
+                        duration = route_duration.get("value") or route_duration.get("seconds")
+                        duration_text = route_duration.get("text", "")
 
+                distance = route.get("distanceMeters") or None
+
+                # Fallback to legs localized text if present
+                legs = route.get("legs", [])
+                if legs and isinstance(legs, list) and len(legs) > 0:
+                    l0 = legs[0]
+                    if isinstance(l0.get("duration"), dict):
+                        duration_text = l0.get("duration").get("text", duration_text)
+                    if isinstance(l0.get("distance"), dict):
+                        distance_text = l0.get("distance").get("text", distance_text)
+
+                # Try to extract encoded polyline from route.polyline.encodedPolyline
+                path_payload = None
+                poly = route.get("polyline") or {}
+                if isinstance(poly, dict):
+                    encoded = poly.get("encodedPolyline") or poly.get("encoded_polyline") or None
+                    if encoded:
+                        path_payload = _decode_polyline(encoded)
+
+                route_desc = route.get("description") or f"google_{idx}"
+                sanitized_desc = route_desc.replace(' ', '-')
+                sanitized_route_id = re.sub(r'[^A-Za-z0-9_\-]', '', sanitized_desc)
+
+                routes.append(
+                    {
+                        "id": sanitized_route_id,
+                        "summary": summary,
+                        "duration": duration,
+                        "distance": distance,
+                        "durationText": duration_text,
+                        "distanceText": distance_text,
+                        "mapEmbedUrl": None,
+                        "pathPayload": path_payload,
+                    }
+                )
             # Sort routes by duration ascending (shortest first). Routes with unknown duration are placed last.
             routes.sort(key=lambda r: (r.get("duration") is None, r.get("duration") or 0))
             return routes

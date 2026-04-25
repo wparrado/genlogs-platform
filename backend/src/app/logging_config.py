@@ -38,9 +38,9 @@ class JSONFormatter(logging.Formatter):
                 rid = get_request_id()
                 if rid:
                     record_dict["request_id"] = rid
-        except Exception:
-            # If request id lookup fails for any reason, skip it
-            pass
+        except Exception as exc:
+            # If request id lookup fails for any reason, skip it and log at debug
+            logging.getLogger(__name__).debug("request id lookup failed", exc_info=exc)
 
         # Include exception text if present
         if record.exc_info:
