@@ -65,7 +65,7 @@ jobs:
         run: npm test --silent
 
   integration:
-    if: env.RUN_E2E == '1'
+    if: ${{ env.RUN_E2E == '1' }}
     name: Integration tests (DB + migrations + tests)
     runs-on: ubuntu-latest
     services:
