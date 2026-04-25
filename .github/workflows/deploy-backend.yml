@@ -123,12 +123,26 @@ jobs:
         id: sql
         run: |
           set -euo pipefail
-          INSTANCE_CONN=$(gcloud sql instances describe genlogs-db --project=${{ env.PROJECT_ID }} --format='get(connectionName)')
+          SA="${GCP_WORKLOAD_IDENTITY_SA:-}"
+          INSTANCE_CONN=""
+          for attempt in $(seq 1 5); do
+            if [ -n "$SA" ]; then
+              INSTANCE_CONN=$(gcloud sql instances describe genlogs-db --project=${{ env.PROJECT_ID }} --format='get(connectionName)' --impersonate-service-account="$SA" 2>/dev/null || true)
+            else
+              INSTANCE_CONN=$(gcloud sql instances describe genlogs-db --project=${{ env.PROJECT_ID }} --format='get(connectionName)' 2>/dev/null || true)
+            fi
+            if [ -n "$INSTANCE_CONN" ]; then
+              echo "INSTANCE_CONN=$INSTANCE_CONN" >> $GITHUB_ENV
+              echo "Found INSTANCE_CONN=$INSTANCE_CONN"
+              break
+            fi
+            echo "Could not get Cloud SQL instance connection name; retrying ($attempt)"
+            sleep 3
+          done
           if [ -z "$INSTANCE_CONN" ]; then
             echo "Could not get Cloud SQL instance connection name" >&2
             exit 1
           fi
-          echo "INSTANCE_CONN=$INSTANCE_CONN" >> $GITHUB_ENV
 
       - name: Deploy to Cloud Run
         env:
