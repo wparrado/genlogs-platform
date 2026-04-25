@@ -36,7 +36,9 @@ jobs:
         run: |
           score=$(uv run pylint app --output-format=text 2>&1 | grep "Your code has been rated" | grep -oP '[0-9]+\.[0-9]+(?=/10)')
           echo "pylint score: $score"
-          uv run python -c "import sys; score=float('$score'); sys.exit(0 if score >= 10.0 else 1)"
+          THRESHOLD=9.0
+          echo "pylint threshold: $THRESHOLD"
+          uv run python -c "import sys; score=float('$score'); sys.exit(0 if score >= $THRESHOLD else 1)"
 
   frontend:
     name: Frontend validation

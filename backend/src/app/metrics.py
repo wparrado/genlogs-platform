@@ -8,19 +8,27 @@ the HTTP route can serve the correct format.
 from collections import Counter
 import threading
 from typing import Optional
+import logging
 
 _lock = threading.Lock()
 _inmem = Counter()
 
+logger = logging.getLogger(__name__)
+
 # Try to use prometheus_client but tolerate absence
 try:
-    from prometheus_client import Counter as PromCounter, CollectorRegistry, generate_latest, CONTENT_TYPE_LATEST
+    from prometheus_client import (
+        Counter as PromCounter,
+        CollectorRegistry,
+        generate_latest,
+        CONTENT_TYPE_LATEST,
+    )
     PROM_AVAILABLE = True
-    _registry = CollectorRegistry()
+    _REGISTRY = CollectorRegistry()
     _prom_counters = {}
-except Exception:
+except ImportError:
     PROM_AVAILABLE = False
-    _registry = None
+    _REGISTRY = None
     _prom_counters = {}
 
 
@@ -31,7 +39,7 @@ def inc(name: str, amount: int = 1) -> None:
         if PROM_AVAILABLE:
             if name not in _prom_counters:
                 # create a Prometheus counter in our private registry
-                _prom_counters[name] = PromCounter(name, f"counter {name}", registry=_registry)
+                _prom_counters[name] = PromCounter(name, f"counter {name}", registry=_REGISTRY)
             _prom_counters[name].inc(amount)
 
 
@@ -42,23 +50,32 @@ def get(name: str) -> int:
 
 
 def reset() -> None:
-    """Reset in-memory counters and recreate Prometheus registry if used."""
-    global _registry, _prom_counters, _inmem
+    """Reset in-memory counters and clean up Prometheus counters from the registry.
+
+    This avoids reassigning module-level registry variables and performs a
+    best-effort unregister of existing Prometheus collectors.
+    """
     with _lock:
         _inmem.clear()
-        if PROM_AVAILABLE:
-            _registry = CollectorRegistry()
-            _prom_counters = {}
+        if PROM_AVAILABLE and _REGISTRY is not None:
+            for counter in list(_prom_counters.values()):
+                try:
+                    _REGISTRY.unregister(counter)
+                except Exception as exc:
+                    # best-effort cleanup; ignore failures
+                    logger.debug("failed to unregister prometheus counter", exc_info=exc)
+            _prom_counters.clear()
 
 
 def prometheus_metrics_latest() -> Optional[bytes]:
     """Return Prometheus exposition bytes if prometheus_client is available."""
-    if PROM_AVAILABLE and _registry is not None:
-        return generate_latest(_registry)
+    if PROM_AVAILABLE and _REGISTRY is not None:
+        return generate_latest(_REGISTRY)
     return None
 
 
 def prometheus_content_type() -> str:
+    """Return the appropriate content-type for Prometheus metrics or JSON fallback."""
     if PROM_AVAILABLE:
         return CONTENT_TYPE_LATEST
     return "application/json"

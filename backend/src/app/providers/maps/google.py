@@ -66,7 +66,7 @@ class SimpleCircuitBreaker:
             # success: reset failure count
             self.failures = 0
             return res
-        except Exception:
+        except Exception as exc:
             self.failures += 1
             if self.failures >= self.failure_threshold:
                 self.opened_at = time.time()
@@ -113,7 +113,10 @@ def _call_google_directions(origin: str, destination: str, api_key: str) -> Dict
         "Content-Type": "application/json",
         "X-Goog-Api-Key": api_key,
         # Request duration, distance, description and encoded polyline
-        "X-Goog-FieldMask": "routes.duration,routes.distanceMeters,routes.description,routes.polyline.encodedPolyline",
+        "X-Goog-FieldMask": (
+            "routes.duration,routes.distanceMeters,"
+            "routes.description,routes.polyline.encodedPolyline"
+        ),
     }
 
     r = requests.post(url, json=payload, headers=headers, timeout=5)
@@ -212,7 +215,7 @@ def get_routes_for_pair(from_place_id: str, to_place_id: str) -> List[Dict]:
                         try:
                             duration = int(float(route_duration[:-1]))
                             duration_text = route_duration
-                        except Exception:
+                        except (ValueError, TypeError):
                             duration = None
                             duration_text = str(route_duration)
                     elif isinstance(route_duration, dict):
@@ -239,7 +242,8 @@ def get_routes_for_pair(from_place_id: str, to_place_id: str) -> List[Dict]:
                         path_payload = _decode_polyline(encoded)
 
                 route_desc = route.get("description") or f"google_{idx}"
-                sanitized_route_id = re.sub(r'[^A-Za-z0-9_\-]', '', route_desc.replace(' ', '-'))
+                sanitized_desc = route_desc.replace(' ', '-')
+                sanitized_route_id = re.sub(r'[^A-Za-z0-9_\-]', '', sanitized_desc)
 
                 routes.append(
                     {

@@ -8,7 +8,6 @@ application controls the log format in one place.
 from __future__ import annotations
 
 import logging
-from typing import Optional
 
 from app.logging_config import configure_logging
 

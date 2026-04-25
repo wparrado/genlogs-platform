@@ -9,12 +9,12 @@ from fastapi.responses import JSONResponse
 from app.providers import db as db_provider
 from app.providers.db.db import DatabaseUnavailable
 from app.providers.logging_provider import get_logger
-
-logger = get_logger(__name__)
 from app.services.search_service import (
     get_carriers_for_pair,
     get_routes_for_pair,
 )
+
+logger = get_logger(__name__)
 
 router = APIRouter()
 

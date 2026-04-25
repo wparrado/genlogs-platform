@@ -1,7 +1,15 @@
+"""Structured logging helpers used by the application.
+
+Provides a JSONFormatter and configure_logging() helper to emit compact JSON
+logs that include a request_id when available.
+"""
+
 import logging
 import json
 import os
 from datetime import datetime, timezone
+
+from app.utils.request_id import get_request_id
 
 
 class JSONFormatter(logging.Formatter):
@@ -12,8 +20,13 @@ class JSONFormatter(logging.Formatter):
     """
 
     def format(self, record: logging.LogRecord) -> str:
+        timestamp = (
+            datetime.fromtimestamp(record.created, timezone.utc)
+            .isoformat()
+            .replace("+00:00", "Z")
+        )
         record_dict = {
-            "timestamp": datetime.fromtimestamp(record.created, timezone.utc).isoformat().replace('+00:00', 'Z'),
+            "timestamp": timestamp,
             "level": record.levelname,
             "logger": record.name,
             "message": record.getMessage(),
@@ -21,15 +34,13 @@ class JSONFormatter(logging.Formatter):
 
         # Attach current request id from context if not provided on the record
         try:
-            from app.utils.request_id import get_request_id
-
             if "request_id" not in record.__dict__:
                 rid = get_request_id()
                 if rid:
                     record_dict["request_id"] = rid
-        except Exception:
-            # If request id module isn't available for some reason, skip it
-            pass
+        except Exception as exc:
+            # If request id lookup fails for any reason, skip it and log at debug
+            logging.getLogger(__name__).debug("request id lookup failed", exc_info=exc)
 
         # Include exception text if present
         if record.exc_info:
@@ -64,7 +75,7 @@ class JSONFormatter(logging.Formatter):
                 try:
                     json.dumps(v)
                     record_dict[k] = v
-                except Exception:
+                except (TypeError, ValueError):
                     record_dict[k] = str(v)
 
         return json.dumps(record_dict, ensure_ascii=False)
@@ -80,7 +91,7 @@ def configure_logging(level: str | None = None) -> None:
 
     try:
         lvl = getattr(logging, level.upper())
-    except Exception:
+    except AttributeError:
         lvl = logging.INFO
 
     handler = logging.StreamHandler()

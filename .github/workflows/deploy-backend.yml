@@ -38,73 +38,32 @@ jobs:
       - name: Configure docker for Artifact Registry
         run: gcloud auth configure-docker --quiet
 
-      - name: Build and push image (Cloud Build)
+      - name: Build and push image (docker build + push)
         working-directory: backend
         run: |
           set -euo pipefail
           REPO_PATH="${{ env.REGION }}-docker.pkg.dev/${{ env.PROJECT_ID }}/${{ env.REPOSITORY }}/${{ env.IMAGE }}"
           IMAGE_TAG="${{ github.sha }}"
           IMAGE="$REPO_PATH:$IMAGE_TAG"
-          echo "Starting Cloud Build for $IMAGE"
+          echo "Building image $IMAGE"
 
-          # Submit build (timeout 5m). gcloud may be unable to stream logs; allow non-zero and poll.
-          gcloud builds submit --tag "$IMAGE" --project="${{ env.PROJECT_ID }}" --timeout=300s --quiet || echo "gcloud builds submit returned non-zero; continuing and polling build status"
+          # Build and push from the runner (requires the GitHub-invoked service account to have Artifact Registry writer permissions)
+          docker build -t "$IMAGE" .
+          docker push "$IMAGE"
 
-          # Wait for the build that produced this image to complete (timeout ~5 minutes)
-          BUILD_ID=""
-          for i in $(seq 1 60); do
-            BUILD_ID=$(gcloud builds list --project="${{ env.PROJECT_ID }}" --filter="images:$IMAGE" --limit=1 --format="value(id)") || true
-            if [ -n "$BUILD_ID" ]; then
-              STATUS=$(gcloud builds describe "$BUILD_ID" --project="${{ env.PROJECT_ID }}" --format="value(status)") || true
-              echo "Found build $BUILD_ID status=$STATUS"
-              if [ "$STATUS" = "SUCCESS" ]; then
-                echo "Build succeeded"
-                break
-              fi
-              if [ "$STATUS" = "FAILURE" ] || [ "$STATUS" = "CANCELLED" ] || [ "$STATUS" = "TIMEOUT" ]; then
-                echo "Build failed with status $STATUS"
-                exit 1
-              fi
-            else
-              echo "No build found yet for image. Retrying... ($i)"
-            fi
-            sleep 5
-          done
-          if [ -z "$BUILD_ID" ]; then
-            echo "Timed out waiting for build to register; failing"
-            exit 1
-          fi
-
-          # Resolve immutable image digest — prefer Cloud Build's output (contains digest), fallback to Artifact Registry per-tag lookup
+          # Resolve digest via Artifact Registry (retry while it becomes available)
           IMAGE_REF=""
-          if [ -n "$BUILD_ID" ]; then
-            echo "Attempting to read images from Cloud Build result: $BUILD_ID"
-            IMAGES=$(gcloud builds describe "$BUILD_ID" --project="${{ env.PROJECT_ID }}" --format='get(results.images[*].name)') || true
-            echo "Cloud Build reported images: $IMAGES"
-            for img in $IMAGES; do
-              # If build provided an image with digest already, use it
-              if echo "$img" | grep -q "@"; then
-                IMAGE_REF="$img"
-                break
-              fi
-              # If image is tagged (repo:tag), try to resolve digest via artifacts describe (with retries)
-              if echo "$img" | grep -q ":"; then
-                REPO_TAG="$img"
-                echo "Resolving digest for tag $REPO_TAG"
-                for attempt in $(seq 1 10); do
-                  DIGEST=$(gcloud artifacts docker images describe "$REPO_TAG" --project="${{ env.PROJECT_ID }}" --format='get(image_summary.digest)' 2>/dev/null || true)
-                  if [ -n "$DIGEST" ]; then
-                    IMAGE_REF="${REPO_TAG%@*}@$DIGEST"
-                    break 2
-                  fi
-                  echo "Digest not present yet for $REPO_TAG; retrying ($attempt)"
-                  sleep 3
-                done
-              fi
-            done
-          fi
+          for attempt in $(seq 1 10); do
+            DIGEST=$(gcloud artifacts docker images describe "$IMAGE" --project="${{ env.PROJECT_ID }}" --format='get(image_summary.digest)' 2>/dev/null || true)
+            if [ -n "$DIGEST" ]; then
+              IMAGE_REF="$REPO_PATH@$DIGEST"
+              break
+            fi
+            echo "Digest not present yet for $IMAGE; retrying ($attempt)"
+            sleep 3
+          done
 
-          # Last-resort fallback: list latest digest from repository
+          # Fallback: list latest digest from repository
           if [ -z "$IMAGE_REF" ]; then
             echo "Falling back to listing latest digest from repo $REPO_PATH"
             for attempt in $(seq 1 10); do
@@ -119,7 +78,7 @@ jobs:
           fi
 
           if [ -z "$IMAGE_REF" ]; then
-            echo "Failed to resolve image digest for $REPO_PATH (tried Cloud Build results and Artifact Registry)" >&2
+            echo "Failed to resolve image digest for $REPO_PATH" >&2
             exit 1
           fi
           echo "IMAGE_REF=$IMAGE_REF" >> $GITHUB_ENV

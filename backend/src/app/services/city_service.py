@@ -24,7 +24,7 @@ def suggest_cities(prefix: str, limit: int = 10) -> List[Dict]:
     if primary == "google":
         try:
             return google_places.get_city_suggestions(prefix, limit)
-        except Exception:
+        except RuntimeError:
             return db_provider.suggest_cities(prefix, limit)
 
     return db_provider.suggest_cities(prefix, limit)

@@ -34,7 +34,12 @@ def _call_find_place(text: str, api_key: str) -> Optional[Dict]:
     """
     try:
         url = "https://maps.googleapis.com/maps/api/place/findplacefromtext/json"
-        params = {"input": text, "inputtype": "textquery", "fields": "place_id,formatted_address,name,address_components", "key": api_key}
+        params = {
+            "input": text,
+            "inputtype": "textquery",
+            "fields": "place_id,formatted_address,name,address_components",
+            "key": api_key,
+        }
         r = requests.get(url, params=params, timeout=5)
         r.raise_for_status()
         payload = r.json()
@@ -64,7 +69,7 @@ def get_place_details_by_id(place_id: str) -> Optional[Dict]:
         payload = r.json()
         result = payload.get("result")
         return result
-    except Exception:
+    except (requests.RequestException, ValueError):
         return None
 
 
@@ -109,14 +114,16 @@ def get_city_suggestions(query: str, limit: int = 10) -> List[Dict]:
                     "country": country,
                 })
             return items
-    except Exception:
+    except (requests.RequestException, ValueError):
         # If Google call fails, record failure and fall back to DB below
         metrics_inc("maps_google_failures")
 
     # If Google did not return results (or failed), fall back to DB-backed suggestions
     try:
         db_items = db_provider.suggest_cities(query, limit)
-    except Exception:
+    except Exception as exc:
+        import logging
+        logging.getLogger(__name__).exception("db_provider.suggest_cities failed", exc_info=exc)
         db_items = []
 
     for it in db_items:
