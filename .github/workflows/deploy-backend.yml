@@ -43,7 +43,9 @@ jobs:
           gcloud builds submit --tag ${{ env.REGION }}-docker.pkg.dev/${{ env.PROJECT_ID }}/${{ env.REPOSITORY }}/${{ env.IMAGE }}:${{ github.sha }} --project=${{ env.PROJECT_ID }}
 
       - name: Deploy to Cloud Run
+        env:
+          CORS_ORIGINS: "https://genlogs-4e471.web.app,https://genlogs-4e471.firebaseapp.com"
         run: |
           gcloud run deploy ${{ env.SERVICE_NAME }} \
             --image=${{ env.REGION }}-docker.pkg.dev/${{ env.PROJECT_ID }}/${{ env.REPOSITORY }}/${{ env.IMAGE }}:${{ github.sha }} \
-            --region=${{ env.REGION }} --platform=managed --allow-unauthenticated --project=${{ env.PROJECT_ID }}
+            --region=${{ env.REGION }} --platform=managed --allow-unauthenticated --set-env-vars GENLOGS_CORS_ORIGINS="${{ env.CORS_ORIGINS }}" --project=${{ env.PROJECT_ID }}
