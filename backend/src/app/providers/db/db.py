@@ -65,7 +65,11 @@ def get_city_by_place_id(place_id: str):
     """Return CityReference for a given place_id or None.
 
     Supports lightweight 'mock:' place_ids by resolving from backend/placeid_mappings.csv
-    when present so tests that use mock IDs don't need a populated DB.
+    when present so tests that use mock IDs don't need a populated DB. When a
+    Google Place ID (e.g., starting with 'ChI' or prefixed with 'place_id:') is
+    provided and no DB entry exists, attempt to enrich via the Google Places
+    Find Place / Place Details provider and return a detached CityReference-like
+    object (do not persist to DB).
     """
     # fast-path for mock ids without touching DB
     if place_id and place_id.startswith("mock:"):
@@ -99,9 +103,53 @@ def get_city_by_place_id(place_id: str):
 
     try:
         with _session_with_dbcheck() as session:
-            return session.exec(select(CityReference).where(CityReference.place_id == place_id)).first()
+            row = session.exec(select(CityReference).where(CityReference.place_id == place_id)).first()
+            if row:
+                return row
     except sqlalchemy.exc.OperationalError as exc:
         raise DatabaseUnavailable(str(exc)) from exc
+
+    # If not found in DB and the id appears to be a Google Place ID, attempt to
+    # retrieve details from Google Places without persisting them. Import inside
+    # the function to avoid circular imports at module import time.
+    try:
+        pid = place_id or ''
+        if pid.startswith('place_id:'):
+            pid = pid.split('place_id:', 1)[1]
+        if isinstance(pid, str) and pid.startswith('ChI'):
+            # Lazy import to avoid circular dependency
+            try:
+                from app.providers.maps import google_places
+
+                details = google_places.get_place_details_by_id(pid)
+                if details:
+                    name = details.get('name', '')
+                    formatted = details.get('formatted_address', '')
+                    components = details.get('address_components', []) or []
+                    state = ''
+                    country = ''
+                    for c in components:
+                        types = c.get('types', [])
+                        if 'administrative_area_level_1' in types and not state:
+                            state = c.get('short_name') or c.get('long_name') or ''
+                        if 'country' in types and not country:
+                            country = c.get('short_name') or c.get('long_name') or ''
+
+                    normalized = formatted.lower() if formatted else f"{name}, {state}, {country}".lower()
+                    return CityReference(
+                        place_id=pid,
+                        name=name,
+                        state=state or '',
+                        country=country or '',
+                        normalized_label=normalized,
+                    )
+            except Exception:
+                # If Google lookup fails for any reason, gracefully return None
+                pass
+    except Exception:
+        pass
+
+    return None
 
 
 

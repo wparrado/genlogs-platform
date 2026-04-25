@@ -49,12 +49,9 @@ async def search(
             content={"code": "invalid_request", "message": "Origin and destination must differ"},
         )
 
-    # Basic format validation: IDs should look like either 'mock:...' or 'place_...'
+    # Basic format validation: accept any non-empty string; deeper checks happen later.
     def _valid_id_format(s: str) -> bool:
-        if not isinstance(s, str):
-            return False
-        s = s.strip()
-        return (":" in s) or s.startswith("place_")
+        return isinstance(s, str) and bool(s.strip())
 
     if not _valid_id_format(from_id) or not _valid_id_format(to_id):
         return JSONResponse(status_code=400, content={"code": "invalid_request", "message": "Malformed city id(s)"})
