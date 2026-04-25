@@ -51,22 +51,6 @@ except Exception as exc:
     # non-fatal - instrumentation best-effort
     logger.exception("instrumentation failed", exc_info=exc)
 
-# Configure CORS origins from environment for safer production settings.
-# Format: comma-separated list, e.g. "https://site1.example,https://site2.example"
-_cors_env = os.getenv("GENLOGS_CORS_ORIGINS")
-if _cors_env:
-    _allow_origins = [o.strip() for o in _cors_env.split(",") if o.strip()]
-else:
-    # sensible defaults for local development
-    _allow_origins = ["http://localhost:5173", "http://localhost:5175"]
-
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=_allow_origins,
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
 
 
 @app.middleware("http")
@@ -234,6 +218,23 @@ async def log_requests(request: Request, call_next):
         except Exception as exc:
             logger.debug("span_ctx.__exit__ failed", exc_info=exc)
 
+
+# Configure CORS origins from environment for safer production settings.
+# Format: comma-separated list, e.g. "https://site1.example,https://site2.example"
+_cors_env = os.getenv("GENLOGS_CORS_ORIGINS")
+if _cors_env:
+    _allow_origins = [o.strip() for o in _cors_env.split(",") if o.strip()]
+else:
+    # sensible defaults for local development
+    _allow_origins = ["http://localhost:5173", "http://localhost:5175"]
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=_allow_origins,
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 app.include_router(health.router)
 app.include_router(search.router, prefix="/api")
