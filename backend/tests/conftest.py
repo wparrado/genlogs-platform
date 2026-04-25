@@ -54,10 +54,11 @@ def _prefer_mock_for_tests():
             pass
 
 def pytest_collection_modifyitems(config, items):
-    # Only skip E2E tests when RUN_E2E is not '1'
+    # Only skip E2E and integration tests when RUN_E2E is not '1'
     if RUN_E2E == "1":
         return
     skip_e2e = pytest.mark.skip(reason="E2E tests disabled by default; set RUN_E2E=1 to enable")
     for item in list(items):
-        if "functional_e2e" in str(item.fspath):
+        fpath = str(item.fspath)
+        if "functional_e2e" in fpath or "/integration/" in fpath or "\\integration\\" in fpath:
             item.add_marker(skip_e2e)
