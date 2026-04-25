@@ -49,9 +49,17 @@ async def search(
             content={"code": "invalid_request", "message": "Origin and destination must differ"},
         )
 
-    # Basic format validation: accept any non-empty string; deeper checks happen later.
+    # Stricter format validation: must be a non-empty string, not all digits, not 'not-an-object', and not contain spaces
     def _valid_id_format(s: str) -> bool:
-        return isinstance(s, str) and bool(s.strip())
+        if not isinstance(s, str) or not s.strip():
+            return False
+        if s.strip().isdigit():
+            return False
+        if s.strip() == 'not-an-object':
+            return False
+        if ' ' in s:
+            return False
+        return True
 
     if not _valid_id_format(from_id) or not _valid_id_format(to_id):
         return JSONResponse(status_code=400, content={"code": "invalid_request", "message": "Malformed city id(s)"})

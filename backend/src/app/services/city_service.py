@@ -16,15 +16,23 @@ from app.config.settings import settings
 def suggest_cities(prefix: str, limit: int = 10) -> List[Dict]:
     """Return up to ``limit`` cities whose normalized_label starts with prefix.
 
-    If the configured maps provider is 'google' the service will attempt to
-    fetch suggestions from the Google Places API and fall back to the DB when
-    unavailable. Otherwise, it delegates to the DB provider.
+    Always prefer Google Places when an API key is configured. If Google is not
+    configured or the call fails, fall back to the DB provider. This keeps the
+    behavior consistent in production while preserving CSV/test fallbacks.
     """
-    primary = (settings.genlogs_maps_provider or "mock").lower()
-    if primary == "google":
+    api_key = getattr(settings, "genlogs_google_api_key", None)
+    if api_key:
         try:
             return google_places.get_city_suggestions(prefix, limit)
-        except RuntimeError:
+        except Exception:
+            # On any Google error, fall back to DB suggestions
             return db_provider.suggest_cities(prefix, limit)
 
+    # If tests opt-in to prefer mock IDs via CSV, allow that behavior only if no API key is configured
+    if getattr(settings, "genlogs_prefer_mock_for_mock_ids", False):
+        # Delegate to DB provider's CSV-aware suggest_cities which already
+        # checks the bundled placeid_mappings.csv when configured.
+        return db_provider.suggest_cities(prefix, limit)
+
+    # No API key configured — use DB provider
     return db_provider.suggest_cities(prefix, limit)
