@@ -64,11 +64,16 @@ async def search(
         logger.error("db.unavailable", extra={"error": str(exc)})
         return JSONResponse(status_code=503, content={"code": "service_unavailable", "message": "Database unavailable"})
 
-    if not from_row or not to_row:
-        return JSONResponse(
-            status_code=400,
-            content={"code": "invalid_request", "message": "Unknown city id(s)"},
-        )
+    # If city rows are missing, do not fail the request. Allow the service to
+    # return fallback carriers/routes (generic defaults) even when the city is
+    # not present in the DB. Create lightweight placeholders so the response
+    # body can still be constructed.
+    missing_from = from_row is None
+    missing_to = to_row is None
+    if missing_from:
+        from_row = type("CityPlaceholder", (), {"place_id": from_id, "name": "", "state": "", "country": ""})()
+    if missing_to:
+        to_row = type("CityPlaceholder", (), {"place_id": to_id, "name": "", "state": "", "country": ""})()
 
     try:
         carriers_list = get_carriers_for_pair(from_id, to_id)
