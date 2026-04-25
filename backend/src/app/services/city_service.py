@@ -20,12 +20,6 @@ def suggest_cities(prefix: str, limit: int = 10) -> List[Dict]:
     configured or the call fails, fall back to the DB provider. This keeps the
     behavior consistent in production while preserving CSV/test fallbacks.
     """
-    # If tests opt-in to prefer mock IDs via CSV, allow that behavior first
-    if getattr(settings, "genlogs_prefer_mock_for_mock_ids", False):
-        # Delegate to DB provider's CSV-aware suggest_cities which already
-        # checks the bundled placeid_mappings.csv when configured.
-        return db_provider.suggest_cities(prefix, limit)
-
     api_key = getattr(settings, "genlogs_google_api_key", None)
     if api_key:
         try:
@@ -33,6 +27,12 @@ def suggest_cities(prefix: str, limit: int = 10) -> List[Dict]:
         except Exception:
             # On any Google error, fall back to DB suggestions
             return db_provider.suggest_cities(prefix, limit)
+
+    # If tests opt-in to prefer mock IDs via CSV, allow that behavior only if no API key is configured
+    if getattr(settings, "genlogs_prefer_mock_for_mock_ids", False):
+        # Delegate to DB provider's CSV-aware suggest_cities which already
+        # checks the bundled placeid_mappings.csv when configured.
+        return db_provider.suggest_cities(prefix, limit)
 
     # No API key configured — use DB provider
     return db_provider.suggest_cities(prefix, limit)
