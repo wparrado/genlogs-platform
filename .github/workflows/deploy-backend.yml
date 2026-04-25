@@ -18,7 +18,7 @@ jobs:
       REPOSITORY: ${{ secrets.ARTIFACT_REPO }}
       IMAGE: genlogs-backend
       SERVICE_NAME: genlogs-backend
-      RUN_MIGRATIONS: 'true'
+      RUN_MIGRATIONS: 'false'
       # expose these secrets as env so they can be tested in step 'if' expressions
       GCP_WORKLOAD_IDENTITY_PROVIDER: ${{ secrets.GCP_WORKLOAD_IDENTITY_PROVIDER }}
       GCP_WORKLOAD_IDENTITY_SA: ${{ secrets.GCP_WORKLOAD_IDENTITY_SA }}
