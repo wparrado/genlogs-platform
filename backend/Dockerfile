@@ -6,6 +6,7 @@ COPY --from=ghcr.io/astral-sh/uv:latest /uv /usr/local/bin/uv
 
 # Copy source early so the build step (uv sync) can build the package
 COPY src/ ./src/
+COPY scripts/ ./scripts/
 COPY pyproject.toml uv.lock alembic.ini ./
 RUN uv sync --no-dev --frozen
 
