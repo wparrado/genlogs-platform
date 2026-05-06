@@ -1,0 +1,979 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>GenLogs Platform — C4 Architecture Explorer</title>
+  <script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
+  <style>
+    :root {
+      --bg:         #0d1117;
+      --surface:    #161b22;
+      --surface2:   #21262d;
+      --border:     #30363d;
+      --accent:     #58a6ff;
+      --accent2:    #3fb950;
+      --accent3:    #d2a8ff;
+      --warn:       #e3b341;
+      --text:       #e6edf3;
+      --text-muted: #8b949e;
+      --hover:      #1c2128;
+      --card-hover: #22272e;
+      --radius:     10px;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+      min-height: 100vh;
+    }
+
+    /* ── Header ──────────────────────────────────────────── */
+    .header {
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+      padding: 14px 28px;
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      position: sticky;
+      top: 0;
+      z-index: 100;
+    }
+    .header-logo { font-size: 22px; }
+    .header-title { font-size: 17px; font-weight: 600; }
+    .header-sub   { font-size: 12px; color: var(--text-muted); margin-top: 1px; }
+
+    /* ── Breadcrumb ───────────────────────────────────────── */
+    .breadcrumb {
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+      padding: 9px 28px;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 13px;
+      flex-wrap: wrap;
+    }
+    .bc-link {
+      color: var(--accent);
+      cursor: pointer;
+      background: none;
+      border: none;
+      font-size: 13px;
+      padding: 0;
+      font-family: inherit;
+    }
+    .bc-link:hover { text-decoration: underline; }
+    .bc-sep   { color: var(--text-muted); }
+    .bc-current { color: var(--text); font-weight: 500; }
+
+    /* ── Main ─────────────────────────────────────────────── */
+    .main {
+      max-width: 1500px;
+      margin: 0 auto;
+      padding: 28px 28px 48px;
+    }
+
+    /* ── View header ──────────────────────────────────────── */
+    .view-header {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      margin-bottom: 20px;
+      flex-wrap: wrap;
+    }
+    .back-btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 7px 14px;
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      color: var(--text);
+      cursor: pointer;
+      font-size: 13px;
+      font-family: inherit;
+      transition: background 0.12s;
+    }
+    .back-btn:hover:not(:disabled) { background: var(--hover); }
+    .back-btn:disabled { opacity: 0.35; cursor: default; }
+
+    .level-badge {
+      padding: 3px 11px;
+      border-radius: 20px;
+      font-size: 11px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.6px;
+    }
+    .lv1 { background: rgba(88,166,255,.15); color: var(--accent);  border: 1px solid rgba(88,166,255,.35); }
+    .lv2 { background: rgba(63,185,80,.15);  color: var(--accent2); border: 1px solid rgba(63,185,80,.35); }
+    .lv3 { background: rgba(210,168,255,.15);color: var(--accent3); border: 1px solid rgba(210,168,255,.35); }
+    .lvdb { background: rgba(227,179,65,.15); color: var(--warn);   border: 1px solid rgba(227,179,65,.35); }
+
+    .view-title { font-size: 20px; font-weight: 600; }
+
+    /* ── Diagram container ────────────────────────────────── */
+    .diagram-wrap {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 24px;
+      overflow-x: auto;
+      min-height: 180px;
+      display: flex;
+      align-items: flex-start;
+      justify-content: center;
+      margin-bottom: 32px;
+      transition: opacity .18s;
+    }
+    .diagram-wrap.loading { opacity: .45; }
+    .diagram-wrap svg { max-width: 100%; height: auto; }
+
+    .spinner {
+      align-self: center;
+      width: 30px; height: 30px;
+      border: 3px solid var(--border);
+      border-top-color: var(--accent);
+      border-radius: 50%;
+      animation: spin .7s linear infinite;
+      margin: 40px auto;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    .render-error {
+      color: #f85149;
+      font-family: monospace;
+      font-size: 13px;
+      padding: 16px;
+      background: rgba(248,81,73,.08);
+      border: 1px solid rgba(248,81,73,.3);
+      border-radius: 8px;
+      white-space: pre-wrap;
+    }
+
+    /* ── Drill-down section ───────────────────────────────── */
+    .drill-heading {
+      font-size: 11px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: .8px;
+      color: var(--text-muted);
+      margin-bottom: 16px;
+    }
+    .drill-group { margin-bottom: 24px; }
+    .drill-group-label {
+      font-size: 11px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: .7px;
+      color: var(--text-muted);
+      margin-bottom: 10px;
+      padding-bottom: 6px;
+      border-bottom: 1px solid var(--border);
+    }
+    .drill-cards {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(210px, 1fr));
+      gap: 10px;
+    }
+    .drill-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 15px 16px;
+      cursor: pointer;
+      transition: background .12s, border-color .12s, transform .12s;
+      display: flex;
+      flex-direction: column;
+      gap: 5px;
+    }
+    .drill-card:hover {
+      background: var(--card-hover);
+      border-color: var(--accent);
+      transform: translateY(-2px);
+    }
+    .dc-icon  { font-size: 19px; }
+    .dc-label { font-size: 14px; font-weight: 600; }
+    .dc-desc  { font-size: 12px; color: var(--text-muted); line-height: 1.45; }
+    .dc-arrow { font-size: 12px; color: var(--accent); font-weight: 500; margin-top: 4px; }
+
+    .no-drill { color: var(--text-muted); font-size: 13px; font-style: italic; padding: 8px 0; }
+  </style>
+</head>
+<body>
+
+<header class="header">
+  <span class="header-logo">🏗</span>
+  <div>
+    <div class="header-title">GenLogs Platform</div>
+    <div class="header-sub">C4 Architecture Explorer — interactive navigation L1 → L2 → L3</div>
+  </div>
+</header>
+
+<nav class="breadcrumb" id="breadcrumb"></nav>
+
+<main class="main">
+  <div class="view-header">
+    <button class="back-btn" id="backBtn" onclick="goBack()" disabled>← Back</button>
+    <span class="level-badge" id="levelBadge"></span>
+    <h2 class="view-title" id="viewTitle"></h2>
+  </div>
+
+  <div class="diagram-wrap" id="diagramWrap">
+    <div class="spinner"></div>
+  </div>
+
+  <div id="drillSection"></div>
+</main>
+
+<script>
+// ─── Diagram content ──────────────────────────────────────────────────────────
+
+const VIEWS = {
+
+  /* ════════════════════════════════════════════════════════════
+     LEVEL 1 — SYSTEM CONTEXT
+     ════════════════════════════════════════════════════════════ */
+  l1: {
+    level: 1,
+    title: 'System Context',
+    breadcrumb: 'L1 — Context',
+    diagram: `C4Context
+    title System Context — GenLogs Platform (full scope)
+
+    Person(freightUser, "Freight User", "Public user. Searches for carriers and routes between cities.")
+    Person(opsAnalyst, "Ops Analyst", "Internal user. Queries observations by plate or DOT number.")
+    Person(admin, "Platform Admin", "Administrator. Manages users, carriers, and configuration.")
+
+    System(genlogs, "GenLogs Platform", "Captures HD highway camera images, detects plates and logos, cross-references federal registries, and exposes route search and plate lookup portals.")
+
+    System_Ext(authProvider, "Identity Provider", "Auth0 / AWS Cognito. Issues and validates JWT tokens.")
+    System_Ext(googlemaps, "Google Maps API", "City autocomplete and route calculation.")
+    System_Ext(cameraNetwork, "Highway Camera Network", "HD cameras on U.S. highways.")
+    System_Ext(usdot, "USDOT API", "Federal registry of freight transport operators.")
+    System_Ext(saferFmcsa, "Safer FMCSA API", "Federal database of vehicles and carriers.")
+
+    Rel(freightUser, genlogs, "Searches routes (anonymous)", "HTTPS")
+    Rel(opsAnalyst, genlogs, "Queries by plate / DOT (authenticated)", "HTTPS")
+    Rel(admin, genlogs, "Administrates", "HTTPS")
+    Rel(genlogs, authProvider, "Validates JWT tokens", "HTTPS / OIDC")
+    Rel(genlogs, googlemaps, "Autocomplete and routes", "HTTPS / REST")
+    Rel(cameraNetwork, genlogs, "Sends images", "HTTPS / SFTP")
+    Rel(genlogs, usdot, "Operator validation", "HTTPS / REST")
+    Rel(genlogs, saferFmcsa, "Carrier lookup", "HTTPS / REST")`,
+    drilldown: [
+      {
+        id: 'l2',
+        icon: '📦',
+        label: 'GenLogs Platform',
+        desc: 'View all containers: APIs, image pipeline, storage and observability.',
+        category: 'Full Platform'
+      }
+    ]
+  },
+
+  /* ════════════════════════════════════════════════════════════
+     LEVEL 2 — CONTAINER DIAGRAM
+     ════════════════════════════════════════════════════════════ */
+  l2: {
+    level: 2,
+    title: 'Container Diagram',
+    breadcrumb: 'L2 — Containers',
+    diagram: `C4Container
+    title Container Diagram — GenLogs Platform
+
+    Person(freightUser, "Freight User")
+    Person(opsAnalyst, "Ops Analyst")
+    Person(admin, "Platform Admin")
+
+    System_Boundary(frontends, "Web Portals") {
+        Container(searchSpa, "Search Portal SPA", "React 18 · Vite · TypeScript", "Public portal. Route and carrier ranking search. No login required.")
+        Container(plateSpa, "Plate Lookup SPA", "React 18 · Vite · TypeScript", "Internal portal. Observation queries by plate / DOT. Login required (ops_analyst+).")
+    }
+
+    System_Boundary(apiLayer, "API Layer") {
+        Container(apiGateway, "API Gateway", "Kong / AWS API Gateway", "Single entry point. JWT verification, RBAC, global rate limiting, routing and access logging.")
+        Container(searchApi, "Search API", "Python 3.12 · FastAPI · Uvicorn", "Validates requests, orchestrates carrier ranking and delegates to map provider.")
+        Container(plateApi, "Plate Lookup API", "Python 3.12 · FastAPI · Uvicorn", "Observation queries by plate, DOT and carrier. Only accessible with ops_analyst+ role.")
+    }
+
+    System_Boundary(pipeline, "Image Processing Pipeline") {
+        Container(ingestionService, "Image Ingestion Service", "Python · FastAPI / Worker", "Receives camera images, stores in Object Storage and publishes image.captured.")
+        Container(visionService, "Vision Processing Service", "Python · Worker async", "Detects plates, truck numbers and logos. Publishes vision.completed or re-queues to DLQ.")
+        Container(enrichmentService, "Carrier Enrichment Service", "Python · Worker async", "Queries USDOT + FMCSA. Persists enriched truck_observation or re-queues to DLQ.")
+        Container(dlqWorker, "DLQ Worker", "Python · Worker", "Consumes failed messages. Generates alerts and records in audit_log for manual review.")
+        Container(etlPipeline, "ETL Pipeline", "Python · Airflow / dbt", "Exports enriched observations from PostgreSQL to the Data Warehouse (daily run).")
+    }
+
+    System_Boundary(storage, "Storage") {
+        ContainerDb(db, "PostgreSQL", "PostgreSQL 15", "Operational DB: city_reference, carriers, carrier_routes, truck_observations, camera_images, users, audit_log.")
+        Container(redis, "Redis Cache", "Redis 7", "Distributed cache. Cities: TTL=1 h. Search: TTL=15 min. Rate limiting state.")
+        Container(objectStorage, "Object Storage", "GCS / S3", "Original images. Lifecycle: hot 90d → nearline 1y → archive.")
+        Container(messageQueue, "Message Queue", "Cloud Pub/Sub · RabbitMQ", "Topics: image.captured, vision.completed. Decouples ingestion from processing.")
+        Container(dlq, "Dead-Letter Queue", "Cloud Pub/Sub DLQ", "Failed messages after 3 retries. 7-day retention + DB record.")
+        ContainerDb(dataWarehouse, "Data Warehouse", "BigQuery / Redshift", "Historical analytics. Indefinite retention. Fed by ETL Pipeline.")
+    }
+
+    System_Boundary(observability, "Observability") {
+        Container(otelCollector, "OTel Collector", "OpenTelemetry Collector", "Aggregates traces, metrics and logs from all services.")
+        Container(grafanaStack, "Grafana Stack", "Prometheus · Loki · Tempo · Grafana", "Metrics, logs and distributed traces. Dashboards and alerts.")
+    }
+
+    System_Ext(authProvider, "Identity Provider", "Auth0 / Cognito")
+    System_Ext(googlemaps, "Google Maps API")
+    System_Ext(cameraNetwork, "Highway Camera Network")
+    System_Ext(usdot, "USDOT API")
+    System_Ext(saferFmcsa, "Safer FMCSA API")
+
+    Rel(freightUser, searchSpa, "Uses (anonymous)", "HTTPS")
+    Rel(opsAnalyst, plateSpa, "Queries by plate / DOT", "HTTPS")
+    Rel(admin, plateSpa, "Administrates and queries", "HTTPS")
+    Rel(plateSpa, authProvider, "Login / obtains JWT", "HTTPS / OIDC")
+    Rel(searchSpa, apiGateway, "City and route requests", "HTTPS / JSON")
+    Rel(plateSpa, apiGateway, "Observation queries + JWT", "HTTPS / JSON")
+    Rel(apiGateway, authProvider, "Validates JWT", "HTTPS")
+    Rel(apiGateway, searchApi, "Public routes", "HTTP / JSON")
+    Rel(apiGateway, plateApi, "Protected routes (ops_analyst+)", "HTTP / JSON")
+    Rel(searchApi, googlemaps, "Cities and routes", "HTTPS · CB + Retry")
+    Rel(searchApi, redis, "Reads / writes cache", "TCP")
+    Rel(searchApi, db, "Reads city_reference, carriers, carrier_routes", "TCP / SQL")
+    Rel(plateApi, redis, "Reads / writes observation cache", "TCP")
+    Rel(plateApi, db, "Reads truck_observations, carriers", "TCP / SQL")
+    Rel(cameraNetwork, ingestionService, "Sends images", "HTTPS / SFTP")
+    Rel(ingestionService, objectStorage, "Stores original image", "HTTPS")
+    Rel(ingestionService, messageQueue, "Publishes image.captured", "Pub/Sub")
+    Rel(visionService, messageQueue, "Consumes image.captured", "Pub/Sub")
+    Rel(visionService, objectStorage, "Downloads image", "HTTPS")
+    Rel(visionService, db, "Persists vision_result", "TCP / SQL")
+    Rel(visionService, messageQueue, "Publishes vision.completed", "Pub/Sub")
+    Rel(visionService, dlq, "Re-queues after 3 failures", "Pub/Sub")
+    Rel(enrichmentService, messageQueue, "Consumes vision.completed", "Pub/Sub")
+    Rel(enrichmentService, usdot, "Validates DOT operator", "HTTPS")
+    Rel(enrichmentService, saferFmcsa, "Carrier lookup", "HTTPS")
+    Rel(enrichmentService, db, "Persists truck_observation", "TCP / SQL")
+    Rel(enrichmentService, dlq, "Re-queues on failure", "Pub/Sub")
+    Rel(dlqWorker, dlq, "Consumes failed messages", "Pub/Sub")
+    Rel(dlqWorker, db, "Records in audit_log", "TCP / SQL")
+    Rel(etlPipeline, db, "Reads observations", "TCP / SQL")
+    Rel(etlPipeline, dataWarehouse, "Loads transformed data", "HTTPS / API")
+    Rel(searchApi, otelCollector, "Traces · metrics · logs", "gRPC / OTLP")
+    Rel(plateApi, otelCollector, "Traces · metrics · logs", "gRPC / OTLP")
+    Rel(visionService, otelCollector, "Traces · metrics · logs", "gRPC / OTLP")
+    Rel(enrichmentService, otelCollector, "Traces · metrics · logs", "gRPC / OTLP")
+    Rel(ingestionService, otelCollector, "Traces · metrics · logs", "gRPC / OTLP")
+    Rel(otelCollector, grafanaStack, "Exports telemetry", "OTLP / remote_write")`,
+    drilldown: [
+      { id: 'l3-search-spa',    icon: '🌐', label: 'Search Portal SPA',          desc: 'Public React portal — route and carrier search',                    category: 'Web Portals' },
+      { id: 'l3-plate-spa',     icon: '🔐', label: 'Plate Lookup SPA',           desc: 'Internal React portal — plate / DOT lookup',                        category: 'Web Portals' },
+      { id: 'l3-search-api',    icon: '⚡', label: 'Search API',                 desc: 'FastAPI backend — public search with Redis and circuit breaker',     category: 'APIs' },
+      { id: 'l3-plate-api',     icon: '🔍', label: 'Plate Lookup API',           desc: 'FastAPI backend — protected observations + signed URLs',             category: 'APIs' },
+      { id: 'l3-ingestion',     icon: '📷', label: 'Image Ingestion Service',    desc: 'Receives camera images, validates and publishes event',              category: 'Image Pipeline' },
+      { id: 'l3-vision',        icon: '👁',  label: 'Vision Processing Service', desc: 'Plate and logo detection with OCR / Computer Vision',               category: 'Image Pipeline' },
+      { id: 'l3-enrichment',    icon: '🔗', label: 'Carrier Enrichment Service', desc: 'USDOT + FMCSA integration — enriches truck_observation',            category: 'Image Pipeline' },
+      { id: 'l3-db-schema',     icon: '🗄', label: 'PostgreSQL Schema',          desc: 'Full entity-relationship diagram — all tables, FKs and RLS policies', category: 'Storage' },
+    ]
+  },
+
+  /* ════════════════════════════════════════════════════════════
+     LEVEL 3 — SEARCH PORTAL SPA
+     ════════════════════════════════════════════════════════════ */
+  'l3-search-spa': {
+    level: 3,
+    title: 'Search Portal SPA',
+    breadcrumb: 'L3 — Search Portal SPA',
+    diagram: `C4Component
+    title Component Diagram — React SPA (Search Portal)
+
+    Container_Boundary(spa, "Search Portal SPA") {
+        Component(app, "App", "React component", "Application shell. High-level layout and section routing.")
+        Component(search, "features/search", "React feature module", "Search form, results display and state management (loading, success, empty, error). Orchestrates components and service calls.")
+        Component(components, "components", "React UI components", "Shared presentational components: CityAutocomplete, RouteCard, CarrierList, ErrorBanner. No business logic.")
+        Component(apiClient, "services/apiClient", "TypeScript module", "HTTP client encapsulating fetch. Abstracts the backend base URL and request/response cycle.")
+        Component(googleMapsEmbed, "Google Maps Embed", "iframe / Maps JS API", "Google Maps embed to visualize the 3 fastest routes between selected cities.")
+    }
+
+    Rel(app, search, "Renders")
+    Rel(search, components, "Composes shared UI from")
+    Rel(search, apiClient, "Fetches suggestions and results via")
+    Rel(search, googleMapsEmbed, "Passes route parameters to")`,
+    drilldown: []
+  },
+
+  /* ════════════════════════════════════════════════════════════
+     LEVEL 3 — PLATE LOOKUP SPA
+     ════════════════════════════════════════════════════════════ */
+  'l3-plate-spa': {
+    level: 3,
+    title: 'Plate Lookup SPA',
+    breadcrumb: 'L3 — Plate Lookup SPA',
+    diagram: `C4Component
+    title Component Diagram — Plate Lookup SPA
+
+    Container_Boundary(plateSpa, "Plate Lookup SPA") {
+        Component(authGuard, "AuthGuard", "React component / OIDC client", "Intercepts access. Redirects to Identity Provider if no valid JWT token. Decodes claims and exposes user role.")
+        Component(plateSearch, "features/plate-search", "React feature module", "Search form for plate or DOT. Renders list of observations with date, location, highway, thumbnail and identified carrier.")
+        Component(observationDetail, "features/observation-detail", "React feature module", "Detail view: captured image, truck data, carrier data (USDOT/FMCSA), route appearance history.")
+        Component(sharedComponents, "components", "React UI components", "Shared components: PlateSearchBar, ObservationCard, CarrierBadge, TruckMap, ErrorBanner.")
+        Component(apiClient, "services/apiClient", "TypeScript module", "HTTP client. Automatically attaches JWT token in the Authorization header of each request to Plate Lookup API.")
+    }
+
+    Rel(authGuard, plateSearch, "Grants access if valid token and correct role")
+    Rel(plateSearch, sharedComponents, "Composes UI from")
+    Rel(plateSearch, apiClient, "Searches observations via")
+    Rel(observationDetail, sharedComponents, "Composes UI from")
+    Rel(observationDetail, apiClient, "Loads detail via")`,
+    drilldown: []
+  },
+
+  /* ════════════════════════════════════════════════════════════
+     LEVEL 3 — SEARCH API
+     ════════════════════════════════════════════════════════════ */
+  'l3-search-api': {
+    level: 3,
+    title: 'Search API',
+    breadcrumb: 'L3 — Search API',
+    diagram: `C4Component
+    title Component Diagram — Search API (FastAPI Backend)
+
+    Container_Boundary(backend, "Search API") {
+        Component(routes, "api/routes", "FastAPI routers", "HTTP endpoints: GET /health, GET /api/cities, GET /api/search. Input validation, rate limiting via Redis (100 req/min per IP), response serialization.")
+        Component(services, "services", "Python modules", "Business logic: carrier ranking, normalization, provider orchestration. Manages Redis reads/writes.")
+        Component(providers, "providers", "Python modules", "External data abstraction. Google Maps provider (primary) with circuit breaker + exponential retry. Mock provider (fallback). Database provider.")
+        Component(models, "schemas / models", "Pydantic models", "Domain entities and DTOs: CitySuggestion, SearchRequest, SearchResponse, Carrier, Route.")
+        Component(config, "config / settings", "pydantic-settings", "Centralized configuration: API keys, timeouts, rate-limit, active provider, Redis URL.")
+        Component(telemetry, "telemetry", "OpenTelemetry SDK", "Automatic FastAPI instrumentation. Emits traces, metrics and structured logs with trace_id.")
+    }
+
+    System_Ext(googlemaps, "Google Maps API", "City autocomplete and route data")
+    ContainerDb_Ext(db, "PostgreSQL", "city_reference, carriers, carrier_routes")
+    ContainerDb_Ext(redis, "Redis Cache", "Cities TTL=1h · Search TTL=15min · Rate limit counters")
+    Container_Ext(otelCollector, "OTel Collector", "Receives traces, metrics and logs via OTLP")
+
+    Rel(routes, services, "Delegates business logic to")
+    Rel(routes, models, "Validates and serializes with")
+    Rel(routes, config, "Reads rate-limit and settings from")
+    Rel(routes, telemetry, "Instrumented by")
+    Rel(services, redis, "Reads / writes cache", "TCP")
+    Rel(services, providers, "Invokes on cache MISS")
+    Rel(services, models, "Operates on")
+    Rel(services, config, "Reads TTL and cache parameters from")
+    Rel(providers, models, "Returns normalized entities")
+    Rel(providers, config, "Reads API keys and timeouts from")
+    Rel(providers, googlemaps, "City and route queries", "HTTPS · Circuit Breaker + Retry")
+    Rel(providers, db, "Reads carrier and city_reference data", "SQL")
+    Rel(telemetry, otelCollector, "Exports traces · metrics · logs", "gRPC / OTLP")`,
+    drilldown: []
+  },
+
+  /* ════════════════════════════════════════════════════════════
+     LEVEL 3 — PLATE LOOKUP API
+     ════════════════════════════════════════════════════════════ */
+  'l3-plate-api': {
+    level: 3,
+    title: 'Plate Lookup API',
+    breadcrumb: 'L3 — Plate Lookup API',
+    diagram: `C4Component
+    title Component Diagram — Plate Lookup API (FastAPI Backend)
+
+    Container_Boundary(plateApi, "Plate Lookup API") {
+        Component(plateRoutes, "api/routes", "FastAPI routers", "Protected endpoints: GET /api/plates/{plate}, GET /api/observations/{id}, GET /api/observations/{id}/image, GET /api/carriers/{dot}. Require ops_analyst+ role. Extracts JWT claims forwarded by API Gateway.")
+        Component(plateServices, "services", "Python modules", "Business logic: observation search by plate or DOT, pagination, carrier appearance history aggregation. Manages Redis reads/writes.")
+        Component(plateProviders, "providers", "Python modules", "Data access: PostgreSQL queries (truck_observations, carriers, vision_results). Signed URL generation (TTL 15 min) for Object Storage images.")
+        Component(plateModels, "schemas / models", "Pydantic models", "Domain DTOs: ObservationSummary, ObservationDetail, CarrierProfile, SignedImageUrl.")
+        Component(plateConfig, "config / settings", "pydantic-settings", "Configuration: DB URL, Redis URL, Object Storage bucket, signed URL TTL (900 s), page size.")
+        Component(plateTelemetry, "telemetry", "OpenTelemetry SDK", "Automatic FastAPI instrumentation. Emits traces, metrics and structured logs with trace_id.")
+    }
+
+    ContainerDb_Ext(db, "PostgreSQL", "truck_observations, carriers, camera_images")
+    ContainerDb_Ext(redis, "Redis Cache", "Observations by plate: TTL=5 min")
+    Container_Ext(objectStorage, "Object Storage", "GCS / S3 — access via signed URL")
+    Container_Ext(otelCollector, "OTel Collector", "Receives traces, metrics and logs via OTLP")
+
+    Rel(plateRoutes, plateServices, "Delegates business logic to")
+    Rel(plateRoutes, plateModels, "Validates and serializes with")
+    Rel(plateRoutes, plateConfig, "Reads settings from")
+    Rel(plateRoutes, plateTelemetry, "Instrumented by")
+    Rel(plateServices, redis, "Reads / writes observation cache", "TCP")
+    Rel(plateServices, plateProviders, "Invokes on cache MISS")
+    Rel(plateServices, plateModels, "Operates on")
+    Rel(plateServices, plateConfig, "Reads cache TTL from")
+    Rel(plateProviders, db, "Queries observations and carriers", "SQL")
+    Rel(plateProviders, objectStorage, "Generates signed URL (TTL 15 min)", "HTTPS / SDK")
+    Rel(plateProviders, plateModels, "Returns normalized entities")
+    Rel(plateProviders, plateConfig, "Reads bucket and signing TTL from")
+    Rel(plateTelemetry, otelCollector, "Exports traces · metrics · logs", "gRPC / OTLP")`,
+    drilldown: []
+  },
+
+  /* ════════════════════════════════════════════════════════════
+     LEVEL 3 — IMAGE INGESTION SERVICE
+     ════════════════════════════════════════════════════════════ */
+  'l3-ingestion': {
+    level: 3,
+    title: 'Image Ingestion Service',
+    breadcrumb: 'L3 — Image Ingestion',
+    diagram: `C4Component
+    title Component Diagram — Image Ingestion Service
+
+    Container_Boundary(ingestion, "Image Ingestion Service") {
+        Component(httpHandler, "HTTP Handler", "Python · FastAPI", "POST /api/ingest/images endpoint. Authentication via API Key or mTLS. Validates camera headers and metadata (highway_id, location, captured_at).")
+        Component(imageValidator, "Image Validator", "Python module", "Verifies format (JPEG/PNG), minimum resolution and maximum size. Rejects corrupted images before storing.")
+        Component(storageWriter, "Storage Writer", "Python module", "Generates unique key (UUID + timestamp + highway_id). Uploads image to Object Storage and returns storage_url.")
+        Component(metadataWriter, "Metadata Writer", "Python module", "Persists the camera_images record in PostgreSQL with processing_status=pending and the obtained storage_url.")
+        Component(eventPublisher, "Event Publisher", "Python module", "Publishes the image.captured event to the Message Queue with id, storage_url and trace_id. Starts the processing pipeline.")
+        Component(ingestTelemetry, "telemetry", "OpenTelemetry SDK", "Emits trace per received image, throughput metrics (images_ingested_total) and storage write latency.")
+    }
+
+    System_Ext(cameraNetwork, "Highway Camera Network", "HD cameras on U.S. highways.")
+    ContainerDb_Ext(db, "PostgreSQL", "camera_images")
+    Container_Ext(objectStorage, "Object Storage", "GCS / S3 — original images")
+    Container_Ext(messageQueue, "Message Queue", "Topic: image.captured")
+    Container_Ext(otelCollector, "OTel Collector", "Receives traces, metrics and logs via OTLP")
+
+    Rel(cameraNetwork, httpHandler, "POST image + metadata", "HTTPS / API Key / mTLS")
+    Rel(httpHandler, imageValidator, "Validates received image")
+    Rel(imageValidator, storageWriter, "Valid image — store")
+    Rel(storageWriter, objectStorage, "Uploads original image", "HTTPS")
+    Rel(storageWriter, metadataWriter, "Delivers storage_url")
+    Rel(metadataWriter, db, "Persists camera_images (pending)", "SQL")
+    Rel(metadataWriter, eventPublisher, "Delivers id + storage_url")
+    Rel(eventPublisher, messageQueue, "Publishes image.captured", "Pub/Sub")
+    Rel(ingestTelemetry, otelCollector, "Exports traces · metrics · logs", "gRPC / OTLP")`,
+    drilldown: []
+  },
+
+  /* ════════════════════════════════════════════════════════════
+     LEVEL 3 — VISION PROCESSING SERVICE
+     ════════════════════════════════════════════════════════════ */
+  'l3-vision': {
+    level: 3,
+    title: 'Vision Processing Service',
+    breadcrumb: 'L3 — Vision Processing',
+    diagram: `C4Component
+    title Component Diagram — Vision Processing Service
+
+    Container_Boundary(vision, "Vision Processing Service") {
+        Component(consumer, "Queue Consumer", "Python async worker", "Subscribed to image.captured topic. Receives event, downloads image from Object Storage and starts the analysis pipeline.")
+        Component(plateDetector, "Plate Detector", "Python module · OCR / CV", "Detects and extracts characters that may correspond to license plates or truck numbers in the image.")
+        Component(logoDetector, "Logo Detector", "Python module · Computer Vision", "Identifies transport company logos in the image using visual classification.")
+        Component(resultPublisher, "Result Publisher", "Python module", "Consolidates results from Plate Detector and Logo Detector. Persists to DB and publishes vision.completed to the queue.")
+    }
+
+    ContainerDb_Ext(db, "PostgreSQL", "vision_results (partial results)")
+    Container_Ext(objectStorage, "Object Storage", "Original image")
+    Container_Ext(messageQueue, "Message Queue", "Events image.captured / vision.completed")
+
+    Rel(consumer, objectStorage, "Downloads image")
+    Rel(consumer, plateDetector, "Sends image for plate analysis")
+    Rel(consumer, logoDetector, "Sends image for logo detection")
+    Rel(plateDetector, resultPublisher, "Returns detected characters")
+    Rel(logoDetector, resultPublisher, "Returns identified logos")
+    Rel(resultPublisher, db, "Persists partial result")
+    Rel(resultPublisher, messageQueue, "Publishes vision.completed")`,
+    drilldown: []
+  },
+
+  /* ════════════════════════════════════════════════════════════
+     LEVEL 3 — CARRIER ENRICHMENT SERVICE
+     ════════════════════════════════════════════════════════════ */
+  'l3-enrichment': {
+    level: 3,
+    title: 'Carrier Enrichment Service',
+    breadcrumb: 'L3 — Carrier Enrichment',
+    diagram: `C4Component
+    title Component Diagram — Carrier Enrichment Service
+
+    Container_Boundary(enrichment, "Carrier Enrichment Service") {
+        Component(enrichConsumer, "Queue Consumer", "Python async worker", "Subscribed to vision.completed topic. Receives detected identifiers (plate, truck number, logo).")
+        Component(usdotProvider, "USDOT Provider", "Python module", "Queries USDOT API to resolve the operator DOT number from detected identifiers.")
+        Component(fmcsaProvider, "FMCSA Provider", "Python module", "Queries Safer FMCSA API to obtain vehicle and carrier data.")
+        Component(enrichSvc, "Enrichment Service", "Python module", "Cross-references USDOT and FMCSA results. Applies normalization rules and deduplicates observations of the same truck.")
+        Component(observationWriter, "Observation Writer", "Python module", "Persists the enriched and complete truck_observation in PostgreSQL.")
+    }
+
+    System_Ext(usdot, "USDOT API", "Federal operator registry")
+    System_Ext(saferFmcsa, "Safer FMCSA API", "Vehicles and carriers")
+    ContainerDb_Ext(db, "PostgreSQL", "truck_observations (enriched)")
+    Container_Ext(messageQueue, "Message Queue", "Events vision.completed")
+
+    Rel(enrichConsumer, usdotProvider, "Requests operator lookup")
+    Rel(enrichConsumer, fmcsaProvider, "Requests vehicle lookup")
+    Rel(usdotProvider, usdot, "Queries DOT operator", "HTTPS")
+    Rel(fmcsaProvider, saferFmcsa, "Queries carrier", "HTTPS")
+    Rel(usdotProvider, enrichSvc, "Returns operator data")
+    Rel(fmcsaProvider, enrichSvc, "Returns vehicle data")
+    Rel(enrichSvc, observationWriter, "Delivers enriched observation")
+    Rel(observationWriter, db, "Persists complete truck_observation")`,
+    drilldown: []
+  },
+
+  /* ════════════════════════════════════════════════════════════
+     DB SCHEMA — ENTITY RELATIONSHIP DIAGRAM
+     ════════════════════════════════════════════════════════════ */
+  'l3-db-schema': {
+    level: 3,
+    levelLabel: 'DB Schema',
+    badgeClass: 'lvdb',
+    title: 'PostgreSQL — Entity Relationship Diagram',
+    breadcrumb: 'DB Schema',
+    diagram: `erDiagram
+
+    %% ── 1. NETWORK INFRASTRUCTURE ───────────────────────────────
+    highways {
+        UUID id PK
+        VARCHAR code UK
+        VARCHAR name
+        TIMESTAMPTZ created_at
+    }
+
+    city_reference {
+        UUID id PK
+        VARCHAR place_id UK
+        VARCHAR name
+        VARCHAR state
+        VARCHAR country
+        VARCHAR normalized_label
+        TIMESTAMPTZ created_at
+    }
+
+    highway_city_segments {
+        UUID id PK
+        UUID highway_id FK
+        UUID city_id FK
+        SMALLINT segment_order
+        TIMESTAMPTZ created_at
+    }
+
+    cameras {
+        UUID id PK
+        UUID highway_id FK
+        VARCHAR device_id UK
+        VARCHAR api_key_hash
+        VARCHAR location
+        VARCHAR status
+        TIMESTAMPTZ registered_at
+        TIMESTAMPTZ last_seen_at
+    }
+
+    %% ── 2. IMAGE PIPELINE ────────────────────────────────────────
+    camera_images {
+        UUID id PK
+        UUID camera_id FK
+        UUID highway_id FK
+        VARCHAR storage_url
+        VARCHAR location
+        TIMESTAMPTZ captured_at
+        VARCHAR processing_status
+        SMALLINT retry_count
+        TIMESTAMPTZ created_at
+    }
+
+    cv_models {
+        UUID id PK
+        VARCHAR name
+        VARCHAR version UK
+        VARCHAR model_type
+        TEXT description
+        VARCHAR artifact_uri
+        VARCHAR deployed_by
+        TIMESTAMPTZ deployed_at
+        TIMESTAMPTZ deprecated_at
+        TIMESTAMPTZ created_at
+    }
+
+    vision_results {
+        UUID id PK
+        UUID image_id FK
+        UUID model_version_id FK
+        VARCHAR plate_text
+        VARCHAR truck_number
+        VARCHAR company_logo
+        FLOAT confidence_score
+        VARCHAR status
+        TIMESTAMPTZ processed_at
+        TIMESTAMPTZ created_at
+    }
+
+    vision_detections {
+        UUID id PK
+        UUID vision_result_id FK
+        VARCHAR detection_type
+        VARCHAR detected_value
+        FLOAT confidence_score
+        JSONB bounding_box
+        TIMESTAMPTZ created_at
+    }
+
+    %% ── 3. CARRIERS AND ROUTES ───────────────────────────────────
+    carriers {
+        UUID id PK
+        VARCHAR name UK
+        VARCHAR dot_number UK
+        VARCHAR mc_number
+        VARCHAR operating_status
+        VARCHAR safety_rating
+        VARCHAR authority_type
+        BOOLEAN is_active
+        TIMESTAMPTZ usdot_synced_at
+        TIMESTAMPTZ created_at
+        TIMESTAMPTZ updated_at
+    }
+
+    carrier_routes {
+        UUID id PK
+        UUID origin_city_id FK
+        UUID destination_city_id FK
+        UUID carrier_id FK
+        SMALLINT expected_daily_trucks
+        TIMESTAMPTZ effective_from
+        TIMESTAMPTZ effective_to
+        TIMESTAMPTZ created_at
+    }
+
+    %% ── 4. ENRICHED OBSERVATIONS ─────────────────────────────────
+    truck_observations {
+        UUID id PK
+        UUID vision_result_id FK
+        UUID carrier_id FK
+        UUID highway_id FK
+        UUID carrier_route_id FK
+        VARCHAR dot_number
+        VARCHAR plate_text
+        VARCHAR location
+        TIMESTAMPTZ observed_at
+        VARCHAR enrichment_status
+        TIMESTAMPTZ created_at
+    }
+
+    %% ── 5. ROUTE DISCOVERY ───────────────────────────────────────
+    carrier_route_candidates {
+        UUID id PK
+        UUID carrier_id FK
+        UUID highway_id FK
+        INTEGER observation_count
+        VARCHAR status
+        UUID reviewed_by FK
+        TIMESTAMPTZ first_seen_at
+        TIMESTAMPTZ last_seen_at
+        TIMESTAMPTZ reviewed_at
+        TIMESTAMPTZ created_at
+    }
+
+    %% ── 6. MULTI-TENANCY ─────────────────────────────────────────
+    organizations {
+        UUID id PK
+        VARCHAR name UK
+        VARCHAR slug UK
+        VARCHAR plan
+        BOOLEAN is_active
+        TIMESTAMPTZ created_at
+        TIMESTAMPTZ updated_at
+    }
+
+    organization_carrier_access {
+        UUID id PK
+        UUID organization_id FK
+        UUID carrier_id FK
+        VARCHAR access_type
+        UUID granted_by FK
+        TIMESTAMPTZ granted_at
+        TIMESTAMPTZ revoked_at
+    }
+
+    %% ── 7. AUTH AND AUDIT ────────────────────────────────────────
+    users {
+        UUID id PK
+        UUID organization_id FK
+        VARCHAR email UK
+        VARCHAR name
+        VARCHAR role
+        BOOLEAN is_active
+        TIMESTAMPTZ created_at
+        TIMESTAMPTZ updated_at
+    }
+
+    audit_log {
+        UUID id PK
+        UUID user_id FK
+        VARCHAR action
+        JSONB payload
+        VARCHAR ip_address
+        TIMESTAMPTZ occurred_at
+    }
+
+    dlq_entries {
+        UUID id PK
+        VARCHAR topic
+        JSONB message_payload
+        VARCHAR failure_reason
+        SMALLINT attempt_count
+        VARCHAR status
+        TIMESTAMPTZ failed_at
+        TIMESTAMPTZ resolved_at
+    }
+
+    %% ── RELATIONSHIPS ────────────────────────────────────────────
+
+    highways ||--o{ cameras : "installed on"
+    highways ||--o{ highway_city_segments : "passes through"
+    city_reference ||--o{ highway_city_segments : "segment of"
+    cameras ||--o{ camera_images : "captures"
+    highways ||--o{ camera_images : "captured on"
+
+    camera_images ||--o{ vision_results : "produces"
+    cv_models ||--o{ vision_results : "generates"
+    vision_results ||--o{ vision_detections : "has detections"
+
+    vision_results ||--o| truck_observations : "enriched into"
+    carriers ||--o{ truck_observations : "identified carrier"
+    highways ||--o{ truck_observations : "observed on"
+    carrier_routes ||--o{ truck_observations : "fulfilled by"
+
+    carriers ||--o{ carrier_routes : "assigned to"
+    city_reference ||--o{ carrier_routes : "origin"
+    city_reference ||--o{ carrier_routes : "destination"
+
+    carriers ||--o{ carrier_route_candidates : "candidate routes"
+    highways ||--o{ carrier_route_candidates : "observed without route"
+    users |o--o{ carrier_route_candidates : "reviewed by"
+
+    organizations ||--o{ organization_carrier_access : "has access"
+    carriers ||--o{ organization_carrier_access : "accessible by"
+    users |o--o{ organization_carrier_access : "granted by"
+
+    organizations ||--o{ users : "has members"
+    users ||--o{ audit_log : "generates"`,
+    drilldown: []
+  }
+};
+
+// ─── Navigation state ─────────────────────────────────────────────────────────
+
+mermaid.initialize({
+  startOnLoad: false,
+  theme: 'dark',
+  securityLevel: 'loose',
+  themeVariables: {
+    background:          '#161b22',
+    mainBkg:             '#21262d',
+    secondBkg:           '#1c2128',
+    nodeBorder:          '#58a6ff',
+    clusterBkg:          '#1c2128',
+    clusterBorder:       '#30363d',
+    titleColor:          '#e6edf3',
+    edgeLabelBackground: '#161b22',
+    lineColor:           '#8b949e',
+    textColor:           '#e6edf3',
+  }
+});
+
+let navStack = [];
+let currentId = 'l1';
+
+function navigate(id) {
+  navStack.push(currentId);
+  currentId = id;
+  renderView();
+}
+
+function goBack() {
+  if (!navStack.length) return;
+  currentId = navStack.pop();
+  renderView();
+}
+
+function jumpTo(stackIndex) {
+  const path = [...navStack, currentId];
+  currentId = path[stackIndex];
+  navStack = path.slice(0, stackIndex);
+  renderView();
+}
+
+async function renderView() {
+  const view = VIEWS[currentId];
+  if (!view) return;
+
+  // Back button
+  document.getElementById('backBtn').disabled = navStack.length === 0;
+
+  // Level badge
+  const badge = document.getElementById('levelBadge');
+  badge.textContent = view.levelLabel || `Level ${view.level}`;
+  badge.className   = `level-badge ${view.badgeClass || 'lv' + view.level}`;
+
+  // Title
+  document.getElementById('viewTitle').textContent = view.title;
+
+  // Breadcrumb
+  const path = [...navStack, currentId];
+  document.getElementById('breadcrumb').innerHTML = path.map((id, i) => {
+    const v = VIEWS[id];
+    const isLast = i === path.length - 1;
+    if (isLast) return `<span class="bc-current">${v.breadcrumb}</span>`;
+    return `<button class="bc-link" onclick="jumpTo(${i})">${v.breadcrumb}</button><span class="bc-sep"> / </span>`;
+  }).join('');
+
+  // Diagram
+  const wrap = document.getElementById('diagramWrap');
+  wrap.innerHTML = '<div class="spinner"></div>';
+  wrap.classList.add('loading');
+
+  try {
+    const uid = 'md-' + Date.now();
+    const { svg } = await mermaid.render(uid, view.diagram);
+    wrap.innerHTML = svg;
+  } catch (err) {
+    wrap.innerHTML = `<div class="render-error">⚠ Error rendering diagram:\n${err.message}</div>`;
+  }
+  wrap.classList.remove('loading');
+
+  // Drill-down cards
+  renderDrilldown(view);
+}
+
+function renderDrilldown(view) {
+  const section = document.getElementById('drillSection');
+
+  if (!view.drilldown || view.drilldown.length === 0) {
+    section.innerHTML = '<p class="no-drill">Most detailed level available. Use ← Back to go up.</p>';
+    return;
+  }
+
+  const groups = {};
+  view.drilldown.forEach(item => {
+    const cat = item.category || 'Explore';
+    if (!groups[cat]) groups[cat] = [];
+    groups[cat].push(item);
+  });
+
+  const multiGroup = Object.keys(groups).length > 1;
+  let html = `<div class="drill-heading">Explore in detail →</div>`;
+
+  for (const [cat, items] of Object.entries(groups)) {
+    html += `<div class="drill-group">`;
+    if (multiGroup) html += `<div class="drill-group-label">${cat}</div>`;
+    html += `<div class="drill-cards">`;
+    items.forEach(item => {
+      html += `
+        <div class="drill-card" onclick="navigate('${item.id}')">
+          <span class="dc-icon">${item.icon}</span>
+          <span class="dc-label">${item.label}</span>
+          <span class="dc-desc">${item.desc}</span>
+          <span class="dc-arrow">View components →</span>
+        </div>`;
+    });
+    html += `</div></div>`;
+  }
+
+  section.innerHTML = html;
+}
+
+// Boot
+renderView();
+</script>
+</body>
+</html>
