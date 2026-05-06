@@ -33,14 +33,17 @@ function App(): React.ReactElement {
       const res: any = await api.get(`/api/search?from_id=${encodeURIComponent(from)}&to_id=${encodeURIComponent(to)}`)
       // Normalize carriers to objects with name and trucksPerDay (API may return strings or objects)
       const carriersList = Array.isArray(res.carriers) ? res.carriers.map((c: any) => {
-        if (c == null) return { name: String(c), trucksPerDay: undefined }
-        if (typeof c === 'string') return { name: c, trucksPerDay: undefined }
+        if (c == null) return { name: String(c), trucksPerDay: 0 }
+        if (typeof c === 'string') return { name: c, trucksPerDay: 0 }
         if (typeof c === 'object') {
           const name = c.name || c.label || c.id || JSON.stringify(c)
-          const trucksPerDay = c.trucksPerDay ?? c.daily_trucks ?? c.trucks_per_day ?? undefined
+          // Normalize trucks to an integer and default to 0 when missing or invalid
+          const raw = c.trucksPerDay ?? c.daily_trucks ?? c.trucks_per_day ?? 0
+          const n = Number(raw)
+          const trucksPerDay = Number.isFinite(n) ? Math.trunc(n) : 0
           return { name, trucksPerDay }
         }
-        return { name: String(c), trucksPerDay: undefined }
+        return { name: String(c), trucksPerDay: 0 }
       }) : []
       setCarriers(carriersList)
 
@@ -130,7 +133,7 @@ function App(): React.ReactElement {
             <h4>Transportistas</h4>
             <div className="chips">
               {carriers.length > 0 ? carriers.map((c, i) => (
-                <span key={`${c.name}-${i}`} className="chip">{c.name}{typeof c.trucksPerDay === 'number' ? ` — ${c.trucksPerDay} camiones/día` : ''}</span>
+                <span key={`${c.name}-${i}`} className="chip">{c.name} — {c.trucksPerDay} camiones/día</span>
               )) : <span className="muted">No hay transportistas disponibles</span>}
             </div>
           </section>
