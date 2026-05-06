@@ -34,7 +34,7 @@ describe('Search error handling (aligned with UI)', () => {
 
     await userEvent.click(screen.getByRole('button', { name: /search/i }))
 
-    expect(await screen.findByText(/error del servidor/i)).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: /Cerrar/i })).toBeInTheDocument()
+    expect(await screen.findByText(/Server error/i)).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /Close/i })).toBeInTheDocument()
   })
 })
