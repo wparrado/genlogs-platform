@@ -38,6 +38,6 @@ describe('Search loading and results (TDD - failing)', () => {
     await userEvent.click(screen.getByRole('button', { name: /search/i }))
 
     // App shows a Toast with the validation message
-    expect(await screen.findByText(/Selecciona un origen válido/i)).toBeInTheDocument()
+    expect(await screen.findByText(/Select a valid origin/i)).toBeInTheDocument()
   })
 })

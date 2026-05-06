@@ -21,7 +21,7 @@ export default function Toast({ message, onClose, duration = 5000 }: Props): Rea
   return (
     <div className={styles.toast} role="status" aria-live="polite">
       <div className={styles.message}>{message}</div>
-      <button className={styles.close} aria-label="Cerrar" onClick={() => onClose && onClose()}>×</button>
+      <button className={styles.close} aria-label="Close" onClick={() => onClose && onClose()}>×</button>
     </div>
   )
 }

@@ -145,8 +145,8 @@ export default function SearchForm({ onSearch, onError }: Props): React.ReactEle
   const handleSearch = async () => {
     const nextErrors: string[] = []
 
-    if (!fromId) nextErrors.push('Selecciona un origen válido de las sugerencias')
-    if (!toId) nextErrors.push('Selecciona un destino válido de las sugerencias')
+    if (!fromId) nextErrors.push('Select a valid origin from the suggestions')
+    if (!toId) nextErrors.push('Select a valid destination from the suggestions')
 
     if (fromId && toId && fromId === toId) {
       nextErrors.push('From and To cannot be the same')

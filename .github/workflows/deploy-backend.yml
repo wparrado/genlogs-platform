@@ -180,7 +180,7 @@ jobs:
             --image="$IMAGE_REF" \
             --region=${{ env.REGION }} --platform=managed --allow-unauthenticated \
             --add-cloudsql-instances="$INSTANCE_CONN" \
-            --set-secrets=DB_PASSWORD=genlogs-db-pass:latest \
+            --set-secrets=DB_PASSWORD=genlogs-db-pass:latest,GENLOGS_GOOGLE_API_KEY=genlogs-google-api-key:latest \
             --env-vars-file /tmp/env.json \
             --project=${{ env.PROJECT_ID }} --quiet
 

@@ -93,7 +93,7 @@ function App(): React.ReactElement {
       let msg = 'An error occurred while searching'
       if (err && typeof err.status === 'number' && err.status >= 500 && err.status < 600) {
         // generic message for server errors (avoid leaking sensitive info)
-        msg = 'Error del servidor. Por favor inténtalo más tarde.'
+        msg = 'Server error. Please try again later.'
       } else if (err && err.message) {
         msg = err.message
       }
@@ -118,23 +118,23 @@ function App(): React.ReactElement {
           </section>
 
           <section aria-label="route results" className="routes">
-            <h4>Rutas</h4>
+            <h4>Routes</h4>
             <ul>
               {routes.length > 0 ? routes.map((r) => (
                 <li key={r.id} className="route-item">
                   <span className="route-name">{r.summary || r.label || r.id}</span>
                   {r.duration ? <small className="route-duration muted">{r.duration}</small> : null}
                 </li>
-              )) : <li className="muted">Introduce origen y destino para ver opciones</li>}
+              )) : <li className="muted">Enter origin and destination to see options</li>}
             </ul>
           </section>
 
           <section aria-label="carrier results" className="carriers">
-            <h4>Transportistas</h4>
+            <h4>Carriers</h4>
             <div className="chips">
               {carriers.length > 0 ? carriers.map((c, i) => (
-                <span key={`${c.name}-${i}`} className="chip">{c.name} — {c.trucksPerDay} camiones/día</span>
-              )) : <span className="muted">No hay transportistas disponibles</span>}
+                <span key={`${c.name}-${i}`} className="chip">{c.name} — {c.trucksPerDay} trucks/day</span>
+              )) : <span className="muted">No carriers available</span>}
             </div>
           </section>
 
