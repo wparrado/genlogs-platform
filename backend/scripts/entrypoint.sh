@@ -24,5 +24,8 @@ until pg_isready -h "$DB_HOST" -p "$DB_PORT" -U "$DB_USER" >/dev/null 2>&1; do
   sleep 1
 done
 
-echo "Postgres is ready — starting app"
+echo "Postgres is ready — running migrations"
+cd /app && uv run alembic -c alembic.ini upgrade head
+
+echo "Migrations done — starting app"
 exec "$@"

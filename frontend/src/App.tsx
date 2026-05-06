@@ -20,7 +20,7 @@ function App(): React.ReactElement {
   }, [])
 
   const [routes, setRoutes] = useState<any[]>([])
-  const [carriers, setCarriers] = useState<string[]>([])
+  const [carriers, setCarriers] = useState<any[]>([])
   const [toastMessage, setToastMessage] = useState<string | null>(null)
 
   const showToast = (msg: string) => {
@@ -31,12 +31,19 @@ function App(): React.ReactElement {
     await new Promise((resolve) => setTimeout(resolve, 10))
     try {
       const res: any = await api.get(`/api/search?from_id=${encodeURIComponent(from)}&to_id=${encodeURIComponent(to)}`)
-      // Normalize carriers to strings for safe rendering (API may return objects)
+      // Normalize carriers to objects with name and trucksPerDay (API may return strings or objects)
       const carriersList = Array.isArray(res.carriers) ? res.carriers.map((c: any) => {
-        if (!c && c !== 0) return String(c)
-        if (typeof c === 'string') return c
-        if (typeof c === 'object') return c.name || c.label || c.id || JSON.stringify(c)
-        return String(c)
+        if (c == null) return { name: String(c), trucksPerDay: 0 }
+        if (typeof c === 'string') return { name: c, trucksPerDay: 0 }
+        if (typeof c === 'object') {
+          const name = c.name || c.label || c.id || JSON.stringify(c)
+          // Normalize trucks to an integer and default to 0 when missing or invalid
+          const raw = c.trucksPerDay ?? c.daily_trucks ?? c.trucks_per_day ?? 0
+          const n = Number(raw)
+          const trucksPerDay = Number.isFinite(n) ? Math.trunc(n) : 0
+          return { name, trucksPerDay }
+        }
+        return { name: String(c), trucksPerDay: 0 }
       }) : []
       setCarriers(carriersList)
 
@@ -86,7 +93,7 @@ function App(): React.ReactElement {
       let msg = 'An error occurred while searching'
       if (err && typeof err.status === 'number' && err.status >= 500 && err.status < 600) {
         // generic message for server errors (avoid leaking sensitive info)
-        msg = 'Error del servidor. Por favor inténtalo más tarde.'
+        msg = 'Server error. Please try again later.'
       } else if (err && err.message) {
         msg = err.message
       }
@@ -111,21 +118,23 @@ function App(): React.ReactElement {
           </section>
 
           <section aria-label="route results" className="routes">
-            <h4>Rutas</h4>
+            <h4>Routes</h4>
             <ul>
               {routes.length > 0 ? routes.map((r) => (
                 <li key={r.id} className="route-item">
                   <span className="route-name">{r.summary || r.label || r.id}</span>
                   {r.duration ? <small className="route-duration muted">{r.duration}</small> : null}
                 </li>
-              )) : <li className="muted">Introduce origen y destino para ver opciones</li>}
+              )) : <li className="muted">Enter origin and destination to see options</li>}
             </ul>
           </section>
 
           <section aria-label="carrier results" className="carriers">
-            <h4>Transportistas</h4>
+            <h4>Carriers</h4>
             <div className="chips">
-              {carriers.length > 0 ? carriers.map((c, i) => <span key={`${c}-${i}`} className="chip">{c}</span>) : <span className="muted">No hay transportistas disponibles</span>}
+              {carriers.length > 0 ? carriers.map((c, i) => (
+                <span key={`${c.name}-${i}`} className="chip">{c.name} — {c.trucksPerDay} trucks/day</span>
+              )) : <span className="muted">No carriers available</span>}
             </div>
           </section>
 
